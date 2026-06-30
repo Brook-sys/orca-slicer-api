@@ -59,6 +59,57 @@ func TestResolveProfileMissingReturnsHTTPError(t *testing.T) {
 	}
 }
 
+func TestResolveProfileInheritsByInternalName(t *testing.T) {
+	dir := t.TempDir()
+	profileDir := filepath.Join(dir, "presets")
+	if err := os.MkdirAll(profileDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(profileDir, "base_file.json"), []byte(`{"name":"Base Profile @Vendor","layer_height":"0.20","speed":"100"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(profileDir, "child.json"), []byte(`{"name":"Child","inherits":"Base Profile @Vendor","speed":"120"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, err := ResolveProfile(dir, "presets", "child", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.Resolved["layer_height"] != "0.20" {
+		t.Fatalf("expected inherited layer height")
+	}
+	if resolved.Resolved["speed"] != "120" {
+		t.Fatalf("expected child override")
+	}
+	if _, ok := resolved.Resolved["inherits"]; ok {
+		t.Fatalf("expected inherits to be removed")
+	}
+}
+
+func TestResolveProfileMissingParentReturnsClearError(t *testing.T) {
+	dir := t.TempDir()
+	profileDir := filepath.Join(dir, "presets")
+	if err := os.MkdirAll(profileDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(profileDir, "child.json"), []byte(`{"name":"Child","inherits":"Missing Parent"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := ResolveProfile(dir, "presets", "child", nil)
+	if err == nil {
+		t.Fatalf("expected missing parent error")
+	}
+	var httpErr *httpx.Error
+	if !errors.As(err, &httpErr) {
+		t.Fatalf("expected http error")
+	}
+	if httpErr.Status != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", httpErr.Status)
+	}
+}
+
 func TestResolveProfile(t *testing.T) {
 	dir := t.TempDir()
 	profileDir := filepath.Join(dir, "presets")
