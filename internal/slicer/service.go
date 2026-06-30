@@ -205,7 +205,7 @@ func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, 
 	}
 
 	if printerPath != "" && presetPath != "" {
-		args = append(args, "--load-settings", printerPath+";"+presetPath)
+		args = append(args, "--load-settings", presetPath+";"+printerPath)
 	}
 	if filamentPath != "" {
 		args = append(args, "--load-filaments", filamentPath)
