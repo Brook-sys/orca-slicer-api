@@ -8,6 +8,20 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/orca-slicer-api ./cmd/server
 
+FROM ubuntu:24.04 AS orca
+
+ARG ORCA_VERSION=2.3.1
+
+RUN apt-get update \
+	&& apt-get install -y --no-install-recommends ca-certificates curl fuse file \
+	&& update-ca-certificates \
+	&& curl -L -o /tmp/orca.AppImage "https://github.com/SoftFever/OrcaSlicer/releases/download/v${ORCA_VERSION}/OrcaSlicer_Linux_AppImage_Ubuntu2404_V${ORCA_VERSION}.AppImage" \
+	&& chmod +x /tmp/orca.AppImage \
+	&& cd /tmp \
+	&& /tmp/orca.AppImage --appimage-extract \
+	&& rm /tmp/orca.AppImage \
+	&& rm -rf /var/lib/apt/lists/*
+
 FROM ubuntu:24.04
 
 RUN apt-get update \
@@ -21,6 +35,7 @@ RUN apt-get update \
 	&& rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /out/orca-slicer-api /app/orca-slicer-api
+COPY --from=orca /tmp/squashfs-root /app/squashfs-root
 
 ENV PORT=3000
 ENV DATA_PATH=/app/data
