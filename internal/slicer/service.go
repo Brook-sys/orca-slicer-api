@@ -65,11 +65,25 @@ func (s *Service) Slice(ctx context.Context, filename string, data []byte, setti
 		return Result{}, err
 	}
 
-	args, err := s.buildArgs(inputPath, inputDir, outputDir, settings)
+	debug := SliceDebug{StartedAt: startedAt, Workdir: workdir, InputPath: inputPath, OutputDir: outputDir, Command: s.OrcaSlicerPath, Settings: settings}
+	args, err := s.buildArgs(inputPath, inputDir, outputDir, settings, &debug)
+	debug.Args = args
 	if err != nil {
+		debug.FinishedAt = nowString()
+		debug.ErrorMessage = err.Error()
+		s.setDebug(debug)
 		s.setFailed(startedAt, err.Error())
 		return Result{}, err
 	}
+	defer func() {
+		debug.ResultJSON = readResultJSON(outputDir)
+		debug.SlicerError = readSlicerError(outputDir)
+		debug.Files, _ = resultFiles(outputDir, settings.ExportType)
+		if debug.FinishedAt == "" {
+			debug.FinishedAt = nowString()
+		}
+		s.setDebug(debug)
+	}()
 
 	cmdCtx := ctx
 	cancel := func() {}
@@ -82,28 +96,34 @@ func (s *Service) Slice(ctx context.Context, filename string, data []byte, setti
 	slog.Info("slicing started", "file", filepath.Base(filename), "export_type", settings.ExportType)
 	started := time.Now()
 	output, err := cmd.CombinedOutput()
+	debug.Output = strings.TrimSpace(string(output))
 	if err != nil {
 		if cmdCtx.Err() != nil {
+			debug.ErrorMessage = cmdCtx.Err().Error()
 			s.setState(JobState{Status: StatusCancelled, StartedAt: startedAt, FinishedAt: nowString(), ErrorMessage: cmdCtx.Err().Error()})
 			return Result{}, httpx.NewError(http.StatusRequestTimeout, "Slicing cancelled or timed out")
 		}
 		slicerError := readSlicerError(outputDir)
 		if slicerError != "" {
+			debug.ErrorMessage = slicerError
 			s.setFailed(startedAt, slicerError)
 			return Result{}, httpx.NewError(http.StatusInternalServerError, "Slicing failed: "+slicerError)
 		}
 		message := strings.TrimSpace(string(output))
+		debug.ErrorMessage = message
 		s.setFailed(startedAt, message)
 		return Result{}, httpx.NewError(http.StatusInternalServerError, "Slicing failed: "+message)
 	}
 
 	files, err := resultFiles(outputDir, settings.ExportType)
 	if err != nil {
+		debug.ErrorMessage = err.Error()
 		s.setFailed(startedAt, err.Error())
 		return Result{}, err
 	}
 	if len(files) == 0 {
 		err := httpx.NewError(http.StatusInternalServerError, "No files generated during slicing")
+		debug.ErrorMessage = err.Error()
 		s.setFailed(startedAt, err.Error())
 		return Result{}, err
 	}
@@ -115,7 +135,7 @@ func (s *Service) Slice(ctx context.Context, filename string, data []byte, setti
 	return result, nil
 }
 
-func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, settings Settings) ([]string, error) {
+func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, settings Settings, debug *SliceDebug) ([]string, error) {
 	args := make([]string, 0)
 
 	if settings.ExportType == "3mf" {
@@ -133,24 +153,53 @@ func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, 
 	printerPath := ""
 	presetPath := ""
 	filamentPath := ""
+	var printerProfile map[string]any
 
 	if settings.Printer != "" {
+		resolved, err := ResolveProfile(s.DataPath, s.OrcaProfilesPath, "printers", settings.Printer, settings.Overrides["printer"])
+		if err != nil {
+			return nil, fmt.Errorf("printer profile: %w", err)
+		}
+		printerProfile = resolved.Resolved
+		if debug != nil {
+			debug.Printer = printerProfile
+		}
 		printerPath = filepath.Join(inputDir, "printer.json")
-		if err := writeResolvedProfile(s.DataPath, s.OrcaProfilesPath, "printers", settings.Printer, settings.Overrides["printer"], printerPath); err != nil {
+		if err := writeProfile(printerPath, printerProfile); err != nil {
 			return nil, fmt.Errorf("printer profile: %w", err)
 		}
 	}
 
 	if settings.Preset != "" {
+		resolved, err := ResolveProfile(s.DataPath, s.OrcaProfilesPath, "presets", settings.Preset, settings.Overrides["preset"])
+		if err != nil {
+			return nil, fmt.Errorf("preset profile: %w", err)
+		}
+		if printerProfile != nil {
+			ensureCompatibleProfile(resolved.Resolved, printerProfile)
+		}
+		if debug != nil {
+			debug.Preset = resolved.Resolved
+		}
 		presetPath = filepath.Join(inputDir, "preset.json")
-		if err := writeResolvedProfile(s.DataPath, s.OrcaProfilesPath, "presets", settings.Preset, settings.Overrides["preset"], presetPath); err != nil {
+		if err := writeProfile(presetPath, resolved.Resolved); err != nil {
 			return nil, fmt.Errorf("preset profile: %w", err)
 		}
 	}
 
 	if settings.Filament != "" {
+		resolved, err := ResolveProfile(s.DataPath, s.OrcaProfilesPath, "filaments", settings.Filament, settings.Overrides["filament"])
+		if err != nil {
+			return nil, fmt.Errorf("filament profile: %w", err)
+		}
+		if printerProfile != nil {
+			ensureCompatibleProfile(resolved.Resolved, printerProfile)
+		}
+		if debug != nil {
+			debug.Filament = resolved.Resolved
+		}
 		filamentPath = filepath.Join(inputDir, "filament.json")
-		if err := writeResolvedProfile(s.DataPath, s.OrcaProfilesPath, "filaments", settings.Filament, settings.Overrides["filament"], filamentPath); err != nil {
+		if err := writeProfile(filamentPath, resolved.Resolved); err != nil {
 			return nil, fmt.Errorf("filament profile: %w", err)
 		}
 	}
@@ -207,11 +256,30 @@ func readSlicerError(outputDir string) string {
 	return result.ErrorString
 }
 
+func readResultJSON(outputDir string) map[string]any {
+	data, err := os.ReadFile(filepath.Join(outputDir, "result.json"))
+	if err != nil {
+		return nil
+	}
+	var result map[string]any
+	if err := json.Unmarshal(data, &result); err != nil {
+		return nil
+	}
+	return result
+}
+
 func (s *Service) Status() JobState {
 	if s.State == nil {
 		return JobState{Status: StatusIdle}
 	}
 	return s.State.Get()
+}
+
+func (s *Service) Debug() SliceDebug {
+	if s.State == nil {
+		return SliceDebug{}
+	}
+	return s.State.GetDebug()
 }
 
 func (s *Service) setFailed(startedAt string, message string) {
@@ -221,6 +289,12 @@ func (s *Service) setFailed(startedAt string, message string) {
 func (s *Service) setState(state JobState) {
 	if s.State != nil {
 		_ = s.State.Set(state)
+	}
+}
+
+func (s *Service) setDebug(debug SliceDebug) {
+	if s.State != nil {
+		_ = s.State.SetDebug(debug)
 	}
 }
 

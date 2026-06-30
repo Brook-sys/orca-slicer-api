@@ -153,6 +153,12 @@ const OpenAPI = `{
         "responses": { "200": { "description": "Status" } }
       }
     },
+    "/slice/debug": {
+      "get": {
+        "summary": "Debug persistido do último slicing",
+        "responses": { "200": { "description": "Debug do último slicing" } }
+      }
+    },
     "/slice/resolve-profiles": {
       "post": {
         "summary": "Preview dos profiles resolvidos para slicing",

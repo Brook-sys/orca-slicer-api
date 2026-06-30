@@ -308,6 +308,7 @@ POST   /profiles/resolve
 ```txt
 POST /slice
 GET  /slice/status
+GET  /slice/debug
 POST /slice/resolve-profiles
 ```
 
@@ -966,6 +967,33 @@ cancelled
 ```
 
 Observação: este endpoint não é async job. Ele apenas mostra o último estado conhecido e persiste em `DATA_PATH/slice-status.json`.
+
+### `GET /slice/debug`
+
+Retorna o debug persistido do último slicing, incluindo comando, argumentos, workdir, profiles temporários, stdout/stderr, `result.json` e erro do OrcaSlicer.
+
+Exemplo:
+
+```bash
+curl http://localhost:3000/slice/debug
+```
+
+Resposta resumida:
+
+```json
+{
+  "workdir": "/tmp/slice-xxx",
+  "command": "/app/squashfs-root/AppRun",
+  "args": ["--slice", "1", "--load-settings", "..."],
+  "printer": {},
+  "preset": {},
+  "filament": {},
+  "slicerError": "The selected printer is not compatible...",
+  "resultJson": {}
+}
+```
+
+Persiste em `DATA_PATH/slice-debug.json`.
 
 ## OpenAPI e Swagger UI
 

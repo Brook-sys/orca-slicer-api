@@ -21,6 +21,10 @@ func (h Handler) Status(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, h.Service.Status())
 }
 
+func (h Handler) Debug(w http.ResponseWriter, r *http.Request) {
+	httpx.WriteJSON(w, http.StatusOK, h.Service.Debug())
+}
+
 func (h Handler) ListAliases(w http.ResponseWriter, r *http.Request) {
 	aliases, err := h.Service.ListAliases()
 	if err != nil {

@@ -198,6 +198,41 @@ func TestResolveProfileUsesCustomAlias(t *testing.T) {
 	}
 }
 
+func TestEnsureCompatibleProfileAddsPrinterNames(t *testing.T) {
+	profile := map[string]any{
+		"compatible_printers": []any{"Base Printer"},
+		"compatible_printers_condition": "some condition",
+	}
+	printer := map[string]any{
+		"name": "Custom Printer",
+		"printer_settings_id": "Custom Printer Settings",
+	}
+
+	ensureCompatibleProfile(profile, printer)
+
+	printers := profile["compatible_printers"].([]any)
+	if len(printers) != 3 {
+		t.Fatalf("expected three compatible printers, got %d", len(printers))
+	}
+	if printers[1] != "Custom Printer" || printers[2] != "Custom Printer Settings" {
+		t.Fatalf("expected custom printer names to be added")
+	}
+	if profile["compatible_printers_condition"] != "" {
+		t.Fatalf("expected compatibility condition to be cleared")
+	}
+}
+
+func TestEnsureCompatibleProfileAppendsToStringList(t *testing.T) {
+	profile := map[string]any{"compatible_printers": "Base Printer;Other Printer"}
+	printer := map[string]any{"name": "Custom Printer"}
+
+	ensureCompatibleProfile(profile, printer)
+
+	if profile["compatible_printers"] != "Base Printer;Other Printer;Custom Printer" {
+		t.Fatalf("expected semicolon string list to be preserved and extended")
+	}
+}
+
 func TestResolveProfileMissingParentReturnsClearError(t *testing.T) {
 	dir := t.TempDir()
 	profileDir := filepath.Join(dir, "presets")

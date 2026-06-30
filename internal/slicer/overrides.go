@@ -52,7 +52,11 @@ func writeResolvedProfile(dataPath string, orcaProfilesPath string, category str
 	if err != nil {
 		return err
 	}
-	data, err := json.MarshalIndent(resolved.Resolved, "", "  ")
+	return writeProfile(outputPath, resolved.Resolved)
+}
+
+func writeProfile(outputPath string, profile map[string]any) error {
+	data, err := json.MarshalIndent(profile, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -301,6 +305,77 @@ func copyMap(input map[string]any) map[string]any {
 func isNotFoundHTTPError(err error) bool {
 	var httpErr *httpx.Error
 	return errors.As(err, &httpErr) && httpErr.Status == http.StatusNotFound
+}
+
+func ensureCompatibleProfile(profile map[string]any, printer map[string]any) {
+	for _, printerName := range profileIdentityNames(printer, []string{"name", "printer_settings_id"}) {
+		profile["compatible_printers"] = appendStringValue(profile["compatible_printers"], printerName)
+	}
+	profile["compatible_printers_condition"] = ""
+}
+
+func profileIdentityNames(profile map[string]any, keys []string) []string {
+	seen := map[string]bool{}
+	names := make([]string, 0, len(keys))
+	for _, key := range keys {
+		value, ok := profile[key].(string)
+		value = strings.TrimSpace(value)
+		if !ok || value == "" || seen[value] {
+			continue
+		}
+		seen[value] = true
+		names = append(names, value)
+	}
+	return names
+}
+
+func appendStringValue(value any, item string) any {
+	item = strings.TrimSpace(item)
+	if item == "" {
+		return value
+	}
+
+	switch current := value.(type) {
+	case []any:
+		for _, existing := range current {
+			if text, ok := existing.(string); ok && text == item {
+				return current
+			}
+		}
+		return append(current, item)
+	case []string:
+		for _, existing := range current {
+			if existing == item {
+				return current
+			}
+		}
+		return append(current, item)
+	case string:
+		parts := splitStringList(current)
+		for _, existing := range parts {
+			if existing == item {
+				return current
+			}
+		}
+		parts = append(parts, item)
+		return strings.Join(parts, ";")
+	default:
+		return []string{item}
+	}
+}
+
+func splitStringList(value string) []string {
+	fields := strings.FieldsFunc(value, func(r rune) bool {
+		return r == ';' || r == ','
+	})
+	parts := make([]string, 0, len(fields))
+	for _, field := range fields {
+		field = strings.TrimSpace(field)
+		if field != "" {
+			parts = append(parts, field)
+		}
+	}
+	return parts
 }
 
 func profileMatches(profile map[string]any, filename string, target string) bool {

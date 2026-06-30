@@ -47,6 +47,7 @@ func main() {
 	mux.HandleFunc("DELETE /profile-aliases/{category}/{from}", sliceHandler.DeleteAlias)
 	mux.HandleFunc("POST /profiles/resolve", sliceHandler.ResolveProfile)
 	mux.HandleFunc("GET /slice/status", sliceHandler.Status)
+	mux.HandleFunc("GET /slice/debug", sliceHandler.Debug)
 	mux.HandleFunc("POST /slice/resolve-profiles", sliceHandler.ResolveProfiles)
 	mux.HandleFunc("POST /slice", sliceHandler.Slice)
 
