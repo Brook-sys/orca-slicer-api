@@ -10,7 +10,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/orca-sl
 
 FROM ubuntu:24.04 AS orca
 
-ARG ORCA_VERSION=2.3.1
+ARG ORCA_VERSION=2.4.1
 
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends ca-certificates curl fuse file \
