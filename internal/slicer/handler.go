@@ -14,7 +14,11 @@ import (
 const maxModelSize = 100_000_000
 
 type Handler struct {
-	Service Service
+	Service *Service
+}
+
+func (h Handler) Status(w http.ResponseWriter, r *http.Request) {
+	httpx.WriteJSON(w, http.StatusOK, h.Service.Status())
 }
 
 func (h Handler) Slice(w http.ResponseWriter, r *http.Request) {

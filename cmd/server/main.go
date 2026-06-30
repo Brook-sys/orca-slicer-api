@@ -22,11 +22,13 @@ func main() {
 
 	healthHandler := health.Handler{DataPath: cfg.DataPath, OrcaSlicerPath: cfg.OrcaSlicerPath}
 	profileHandler := profiles.Handler{Store: profileStore}
-	sliceHandler := slicer.Handler{Service: slicer.Service{
+	sliceService := &slicer.Service{
 		DataPath:       cfg.DataPath,
 		OrcaSlicerPath: cfg.OrcaSlicerPath,
 		Timeout:        cfg.SliceTimeout,
-	}}
+		State:          slicer.NewStateStore(cfg.DataPath),
+	}
+	sliceHandler := slicer.Handler{Service: sliceService}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler.Check)
@@ -35,6 +37,7 @@ func main() {
 	mux.HandleFunc("POST /profiles/{category}/upload", profileHandler.Upload)
 	mux.HandleFunc("POST /profiles/{category}/import-url", profileHandler.ImportURL)
 	mux.HandleFunc("DELETE /profiles/{category}/{name}", profileHandler.Delete)
+	mux.HandleFunc("GET /slice/status", sliceHandler.Status)
 	mux.HandleFunc("POST /slice", sliceHandler.Slice)
 
 	handler := httpx.Middleware(cfg.CORSOrigins, mux)

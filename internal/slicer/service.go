@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Brook-sys/orca-slicer-api/internal/httpx"
@@ -18,34 +20,53 @@ type Service struct {
 	DataPath       string
 	OrcaSlicerPath string
 	Timeout        time.Duration
+	State          *StateStore
+	mu             sync.Mutex
 }
 
-func (s Service) Slice(ctx context.Context, filename string, data []byte, settings Settings) (Result, error) {
+func (s *Service) Slice(ctx context.Context, filename string, data []byte, settings Settings) (Result, error) {
+	if !s.mu.TryLock() {
+		return Result{}, httpx.NewError(http.StatusConflict, "Slicer is busy")
+	}
+	defer s.mu.Unlock()
+
+	startedAt := nowString()
+	if s.State != nil {
+		_ = s.State.Set(JobState{Status: StatusProcessing, StartedAt: startedAt})
+	}
+
 	if s.OrcaSlicerPath == "" {
-		return Result{}, httpx.NewError(http.StatusInternalServerError, "ORCASLICER_PATH is not configured")
+		err := httpx.NewError(http.StatusInternalServerError, "ORCASLICER_PATH is not configured")
+		s.setFailed(startedAt, err.Error())
+		return Result{}, err
 	}
 
 	workdir, err := os.MkdirTemp("", "slice-*")
 	if err != nil {
+		s.setFailed(startedAt, err.Error())
 		return Result{}, err
 	}
 
 	inputDir := filepath.Join(workdir, "input")
 	outputDir := filepath.Join(workdir, "output")
 	if err := os.MkdirAll(inputDir, 0o755); err != nil {
+		s.setFailed(startedAt, err.Error())
 		return Result{}, err
 	}
 	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		s.setFailed(startedAt, err.Error())
 		return Result{}, err
 	}
 
 	inputPath := filepath.Join(inputDir, filepath.Base(filename))
 	if err := os.WriteFile(inputPath, data, 0o644); err != nil {
+		s.setFailed(startedAt, err.Error())
 		return Result{}, err
 	}
 
 	args, err := s.buildArgs(inputPath, inputDir, outputDir, settings)
 	if err != nil {
+		s.setFailed(startedAt, err.Error())
 		return Result{}, err
 	}
 
@@ -57,24 +78,40 @@ func (s Service) Slice(ctx context.Context, filename string, data []byte, settin
 	defer cancel()
 
 	cmd := exec.CommandContext(cmdCtx, s.OrcaSlicerPath, args...)
+	slog.Info("slicing started", "file", filepath.Base(filename), "export_type", settings.ExportType)
+	started := time.Now()
 	output, err := cmd.CombinedOutput()
 	if err != nil {
+		if cmdCtx.Err() != nil {
+			s.setState(JobState{Status: StatusCancelled, StartedAt: startedAt, FinishedAt: nowString(), ErrorMessage: cmdCtx.Err().Error()})
+			return Result{}, httpx.NewError(http.StatusRequestTimeout, "Slicing cancelled or timed out")
+		}
 		slicerError := readSlicerError(outputDir)
 		if slicerError != "" {
+			s.setFailed(startedAt, slicerError)
 			return Result{}, httpx.NewError(http.StatusInternalServerError, "Slicing failed: "+slicerError)
 		}
-		return Result{}, httpx.NewError(http.StatusInternalServerError, "Slicing failed: "+strings.TrimSpace(string(output)))
+		message := strings.TrimSpace(string(output))
+		s.setFailed(startedAt, message)
+		return Result{}, httpx.NewError(http.StatusInternalServerError, "Slicing failed: "+message)
 	}
 
 	files, err := resultFiles(outputDir, settings.ExportType)
 	if err != nil {
+		s.setFailed(startedAt, err.Error())
 		return Result{}, err
 	}
 	if len(files) == 0 {
-		return Result{}, httpx.NewError(http.StatusInternalServerError, "No files generated during slicing")
+		err := httpx.NewError(http.StatusInternalServerError, "No files generated during slicing")
+		s.setFailed(startedAt, err.Error())
+		return Result{}, err
 	}
 
-	return Result{Files: files, Workdir: workdir, Metadata: AggregateMetadata(files)}, nil
+	metadata := AggregateMetadata(files)
+	result := Result{Files: files, Workdir: workdir, Metadata: metadata}
+	s.setState(JobState{Status: StatusCompleted, StartedAt: startedAt, FinishedAt: nowString(), Files: files, Metadata: metadata})
+	slog.Info("slicing completed", "duration_ms", time.Since(started).Milliseconds(), "files", len(files), "print_time_seconds", metadata.PrintTimeSeconds)
+	return result, nil
 }
 
 func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, settings Settings) ([]string, error) {
@@ -167,6 +204,23 @@ func readSlicerError(outputDir string) string {
 		return ""
 	}
 	return result.ErrorString
+}
+
+func (s *Service) Status() JobState {
+	if s.State == nil {
+		return JobState{Status: StatusIdle}
+	}
+	return s.State.Get()
+}
+
+func (s *Service) setFailed(startedAt string, message string) {
+	s.setState(JobState{Status: StatusFailed, StartedAt: startedAt, FinishedAt: nowString(), ErrorMessage: message})
+}
+
+func (s *Service) setState(state JobState) {
+	if s.State != nil {
+		_ = s.State.Set(state)
+	}
 }
 
 func boolArg(value bool) string {
