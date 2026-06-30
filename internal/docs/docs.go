@@ -141,6 +141,7 @@ const OpenAPI = `{
                   "orient": { "type": "boolean" },
                   "exportType": { "type": "string", "enum": ["gcode", "3mf"] },
                   "multicolorOnePlate": { "type": "boolean" },
+                  "resolveProfiles": { "type": "boolean", "description": "Quando true, resolve inherits/built-ins para profiles selecionados por nome antes do slicing. Não afeta printerProfile/presetProfile/filamentProfile enviados como arquivo." },
                   "overrides": { "type": "string", "description": "JSON string com overrides por printer/preset/filament" }
                 }
               }

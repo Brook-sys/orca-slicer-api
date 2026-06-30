@@ -46,8 +46,9 @@ Modos de profiles no slicing:
 2. Por arquivo multipart: printerProfile/presetProfile/filamentProfile enviam JSONs crus diretamente no /slice.
 ```
 
-No slicing por nome salvo, a API usa o JSON salvo cru com overrides temporários; não resolve `inherits` automaticamente nessa etapa.
-`/profiles/resolve` e `/slice/resolve-profiles` continuam disponíveis apenas para preview/diagnóstico de resolução.
+No slicing por nome salvo, a API usa o JSON salvo cru com overrides temporários por padrão.
+Se `resolveProfiles=true` for enviado no `/slice`, a API resolve `inherits` e built-ins antes de chamar o OrcaSlicer.
+`/profiles/resolve` e `/slice/resolve-profiles` continuam disponíveis para preview/diagnóstico de resolução.
 
 ## Recursos disponíveis
 
@@ -805,6 +806,7 @@ Multipart fields:
 | `orient` | bool | Não | Auto-orient. |
 | `exportType` | string | Não | `gcode` ou `3mf`. Padrão: `gcode`. |
 | `multicolorOnePlate` | bool | Não | Ativa `--allow-multicolor-oneplate`. |
+| `resolveProfiles` | bool | Não | Quando `true`, resolve `inherits`/built-ins para profiles selecionados por nome antes do slicing. Não afeta `printerProfile`, `presetProfile` ou `filamentProfile` enviados como arquivo. |
 | `overrides` | string JSON | Não | JSON com overrides por `printer`, `preset`, `filament`. |
 
 Exemplo básico usando profiles salvos por nome:
@@ -859,6 +861,20 @@ Com profiles enviados como arquivo, o comando do OrcaSlicer usa o padrão:
 ```txt
 --slice <plate> --arrange <0|1> --orient <0|1> --load-settings printer.json;preset.json --load-filaments filament_1.json[;filament_2.json]
 ```
+
+Exemplo com resolução de `inherits`/built-ins antes do slicing:
+
+```bash
+curl -X POST http://localhost:3000/slice \
+  -F file=@model.stl \
+  -F printer='Elegoo Neptune 4 0.4 nozzle' \
+  -F preset='0.20mm Standard @Elegoo N4 0.4 nozzle' \
+  -F filament='PLA_personalizado1_ONP' \
+  -F resolveProfiles=true \
+  -o result.gcode
+```
+
+Esse modo é útil quando um profile salvo herda de profiles built-in do OrcaSlicer. A API gera JSONs temporários resolvidos apenas para o slicing; os arquivos salvos não são alterados.
 
 Exemplo com overrides:
 

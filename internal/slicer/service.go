@@ -164,7 +164,7 @@ func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, 
 			return nil, fmt.Errorf("printer profile: %w", err)
 		}
 	} else if settings.Printer != "" {
-		profile, err := loadRawUserProfile(s.DataPath, "printers", settings.Printer, settings.Overrides["printer"])
+		profile, err := s.loadSelectedProfile("printers", settings.Printer, settings.Overrides["printer"], settings.ResolveProfiles)
 		if err != nil {
 			return nil, fmt.Errorf("printer profile: %w", err)
 		}
@@ -187,7 +187,7 @@ func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, 
 			return nil, fmt.Errorf("preset profile: %w", err)
 		}
 	} else if settings.Preset != "" {
-		profile, err := loadRawUserProfile(s.DataPath, "presets", settings.Preset, settings.Overrides["preset"])
+		profile, err := s.loadSelectedProfile("presets", settings.Preset, settings.Overrides["preset"], settings.ResolveProfiles)
 		if err != nil {
 			return nil, fmt.Errorf("preset profile: %w", err)
 		}
@@ -214,7 +214,7 @@ func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, 
 			filamentPaths = append(filamentPaths, filamentPath)
 		}
 	} else if settings.Filament != "" {
-		profile, err := loadRawUserProfile(s.DataPath, "filaments", settings.Filament, settings.Overrides["filament"])
+		profile, err := s.loadSelectedProfile("filaments", settings.Filament, settings.Overrides["filament"], settings.ResolveProfiles)
 		if err != nil {
 			return nil, fmt.Errorf("filament profile: %w", err)
 		}
@@ -244,6 +244,17 @@ func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, 
 
 	args = append(args, "--allow-newer-file", "--outputdir", outputDir, inputPath)
 	return args, nil
+}
+
+func (s Service) loadSelectedProfile(category string, name string, overrides map[string]any, resolve bool) (map[string]any, error) {
+	if resolve {
+		resolved, err := ResolveProfile(s.DataPath, s.OrcaProfilesPath, category, name, overrides)
+		if err != nil {
+			return nil, err
+		}
+		return resolved.Resolved, nil
+	}
+	return loadRawUserProfile(s.DataPath, category, name, overrides)
 }
 
 func resultFiles(outputDir string, exportType string) ([]string, error) {

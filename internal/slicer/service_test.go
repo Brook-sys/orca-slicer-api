@@ -29,6 +29,52 @@ func TestSliceStatusDefaultsIdle(t *testing.T) {
 	}
 }
 
+func TestBuildArgsCanResolveNamedProfiles(t *testing.T) {
+	dataDir := t.TempDir()
+	builtInDir := filepath.Join(dataDir, "builtins", "Elegoo", "process")
+	if err := os.MkdirAll(filepath.Join(dataDir, "printers"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dataDir, "presets"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(builtInDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "printers", "printer.json"), []byte(`{"name":"Printer"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(builtInDir, "base.json"), []byte(`{"name":"Base","layer_height":"0.2"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "presets", "preset.json"), []byte(`{"name":"Preset","inherits":"Base","speed":"100"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	service := Service{DataPath: dataDir, OrcaProfilesPath: filepath.Join(dataDir, "builtins")}
+	workdir := t.TempDir()
+	inputDir := filepath.Join(workdir, "input")
+	outputDir := filepath.Join(workdir, "output")
+	if err := os.MkdirAll(inputDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	debug := SliceDebug{}
+	_, err := service.buildArgs(filepath.Join(inputDir, "model.stl"), inputDir, outputDir, Settings{Printer: "printer", Preset: "preset", ResolveProfiles: true}, &debug)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if debug.Preset["layer_height"] != "0.2" {
+		t.Fatalf("expected resolved inherited preset")
+	}
+	if _, ok := debug.Preset["inherits"]; ok {
+		t.Fatalf("expected inherits to be removed")
+	}
+}
+
 func TestBuildArgsUsesUploadedProfilesBeforeSavedNames(t *testing.T) {
 	service := Service{DataPath: t.TempDir()}
 	workdir := t.TempDir()
