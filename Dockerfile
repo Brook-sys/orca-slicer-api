@@ -15,7 +15,7 @@ FROM ubuntu:24.04 AS orca
 ARG ORCA_VERSION
 
 RUN apt-get update \
-	&& apt-get install -y --no-install-recommends ca-certificates curl fuse file libopengl0 libglu1-mesa libgl1 libglx0 libegl1 libglvnd0 \
+	&& apt-get install -y --no-install-recommends ca-certificates curl fuse file libopengl0 libglu1-mesa libgl1 libglx0 libegl1 libglvnd0 libsm6 libxext6 libxrender1 \
 	&& update-ca-certificates \
 	&& curl -L -o /tmp/orca.AppImage "https://github.com/SoftFever/OrcaSlicer/releases/download/v${ORCA_VERSION}/OrcaSlicer_Linux_AppImage_Ubuntu2404_V${ORCA_VERSION}.AppImage" \
 	&& chmod +x /tmp/orca.AppImage \
@@ -39,6 +39,7 @@ RUN apt-get update \
 	ca-certificates curl \
 	libopengl0 libglu1-mesa \
 	libgl1 libgl1-mesa-dri libglx0 libegl1 libglvnd0 \
+	libsm6 libxext6 libxrender1 \
 	libgtk-3-0 \
 	libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 \
 	libwebkit2gtk-4.1-0 \

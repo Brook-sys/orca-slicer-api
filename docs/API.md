@@ -143,6 +143,9 @@ libgl1
 libglx0
 libegl1
 libglvnd0
+libsm6
+libxext6
+libxrender1
 ```
 
 ## Estrutura de dados
