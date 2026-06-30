@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/Brook-sys/orca-slicer-api/internal/config"
+	"github.com/Brook-sys/orca-slicer-api/internal/docs"
 	"github.com/Brook-sys/orca-slicer-api/internal/health"
 	"github.com/Brook-sys/orca-slicer-api/internal/httpx"
 	"github.com/Brook-sys/orca-slicer-api/internal/profiles"
@@ -31,6 +32,8 @@ func main() {
 	sliceHandler := slicer.Handler{Service: sliceService}
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /openapi.json", docs.OpenAPIHandler)
+	mux.HandleFunc("GET /api-docs", docs.SwaggerUIHandler)
 	mux.HandleFunc("GET /health", healthHandler.Check)
 	mux.HandleFunc("GET /profiles/{category}", profileHandler.List)
 	mux.HandleFunc("GET /profiles/{category}/{name}", profileHandler.Get)
