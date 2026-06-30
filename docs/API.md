@@ -290,6 +290,10 @@ GET /health
 ### Profiles
 
 ```txt
+GET    /profile-aliases
+POST   /profile-aliases
+DELETE /profile-aliases/{category}/{from}
+
 GET    /profiles/{category}
 GET    /profiles/{category}/{name}
 POST   /profiles/{category}/upload
@@ -561,6 +565,81 @@ Resposta:
 ```
 
 Também remove o arquivo `.source.json`, se existir.
+
+## Profile aliases
+
+Aliases resolvem diferenças entre nomes de `inherits` e nomes reais dos profiles built-in.
+
+Exemplo real:
+
+```txt
+inherits pede: 0.20mm Standard @Elegoo Neptune4 (0.4 nozzle)
+built-in existe como: 0.20mm Standard @Elegoo N4 0.4 nozzle
+```
+
+A API já possui aliases conhecidos para casos comuns:
+
+```txt
+Neptune4 -> N4
+Neptune 4 -> N4
+Neptune-4 -> N4
+```
+
+Também é possível cadastrar aliases customizados em arquivo:
+
+```txt
+DATA_PATH/profile-aliases.json
+```
+
+### Listar aliases
+
+```txt
+GET /profile-aliases
+```
+
+```bash
+curl http://localhost:3000/profile-aliases
+```
+
+### Criar ou atualizar alias
+
+```txt
+POST /profile-aliases
+```
+
+Body:
+
+```json
+{
+  "category": "presets",
+  "from": "0.20mm Standard @Elegoo Neptune4 (0.4 nozzle)",
+  "to": "0.20mm Standard @Elegoo N4 0.4 nozzle"
+}
+```
+
+Exemplo:
+
+```bash
+curl -X POST http://localhost:3000/profile-aliases \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "category":"presets",
+    "from":"0.20mm Standard @Elegoo Neptune4 (0.4 nozzle)",
+    "to":"0.20mm Standard @Elegoo N4 0.4 nozzle"
+  }'
+```
+
+### Remover alias
+
+```txt
+DELETE /profile-aliases/{category}/{from}
+```
+
+Exemplo:
+
+```bash
+curl -X DELETE "http://localhost:3000/profile-aliases/presets/0.20mm%20Standard%20%40Elegoo%20Neptune4%20%280.4%20nozzle%29"
+```
 
 ## Overrides
 

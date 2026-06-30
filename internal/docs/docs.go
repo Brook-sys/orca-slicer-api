@@ -17,6 +17,29 @@ const OpenAPI = `{
         "responses": { "200": { "description": "Healthy" }, "503": { "description": "Unhealthy" } }
       }
     },
+    "/profile-aliases": {
+      "get": {
+        "summary": "Lista aliases de profiles",
+        "responses": { "200": { "description": "Aliases" } }
+      },
+      "post": {
+        "summary": "Cria ou atualiza alias de profile",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/ProfileAlias" } }
+          }
+        },
+        "responses": { "200": { "description": "Aliases atualizados" } }
+      }
+    },
+    "/profile-aliases/{category}/{from}": {
+      "delete": {
+        "summary": "Remove alias de profile",
+        "parameters": [{ "$ref": "#/components/parameters/Category" }, { "name": "from", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Aliases atualizados" }, "404": { "description": "Alias não encontrado" } }
+      }
+    },
     "/profiles/{category}": {
       "get": {
         "summary": "Lista profiles com metadata",
@@ -161,6 +184,15 @@ const OpenAPI = `{
       }
     },
     "schemas": {
+      "ProfileAlias": {
+        "type": "object",
+        "required": ["category", "from", "to"],
+        "properties": {
+          "category": { "type": "string", "enum": ["printers", "presets", "filaments"] },
+          "from": { "type": "string" },
+          "to": { "type": "string" }
+        }
+      },
       "ImportRequest": {
         "type": "object",
         "required": ["name", "url"],

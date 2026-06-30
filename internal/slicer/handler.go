@@ -21,6 +21,38 @@ func (h Handler) Status(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, h.Service.Status())
 }
 
+func (h Handler) ListAliases(w http.ResponseWriter, r *http.Request) {
+	aliases, err := h.Service.ListAliases()
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, aliases)
+}
+
+func (h Handler) SaveAlias(w http.ResponseWriter, r *http.Request) {
+	var alias ProfileAlias
+	if err := json.NewDecoder(r.Body).Decode(&alias); err != nil {
+		httpx.WriteError(w, httpx.NewError(http.StatusBadRequest, "Invalid JSON body"))
+		return
+	}
+	aliases, err := h.Service.SaveAlias(alias)
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, aliases)
+}
+
+func (h Handler) DeleteAlias(w http.ResponseWriter, r *http.Request) {
+	aliases, err := h.Service.DeleteAlias(r.PathValue("category"), r.PathValue("from"))
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, aliases)
+}
+
 func (h Handler) ResolveProfile(w http.ResponseWriter, r *http.Request) {
 	var req ResolveProfileRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

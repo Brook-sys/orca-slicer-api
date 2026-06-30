@@ -168,6 +168,36 @@ func TestResolveProfileFindsBuiltInByPrintSettingsID(t *testing.T) {
 	}
 }
 
+func TestResolveProfileUsesCustomAlias(t *testing.T) {
+	dir := t.TempDir()
+	dataDir := filepath.Join(dir, "data")
+	builtInDir := filepath.Join(dir, "resources", "profiles", "Elegoo", "process")
+	if err := os.MkdirAll(filepath.Join(dataDir, "presets"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(builtInDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	service := &Service{DataPath: dataDir}
+	if _, err := service.SaveAlias(ProfileAlias{Category: "presets", From: "Strange Old Name", To: "Real New Name"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(builtInDir, "real.json"), []byte(`{"name":"Real New Name","layer_height":"0.2"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "presets", "custom.json"), []byte(`{"name":"Custom","inherits":"Strange Old Name"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, err := ResolveProfile(dataDir, filepath.Join(dir, "resources", "profiles"), "presets", "custom", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.Resolved["layer_height"] != "0.2" {
+		t.Fatalf("expected inherited value through custom alias")
+	}
+}
+
 func TestResolveProfileMissingParentReturnsClearError(t *testing.T) {
 	dir := t.TempDir()
 	profileDir := filepath.Join(dir, "presets")

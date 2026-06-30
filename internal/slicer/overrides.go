@@ -93,18 +93,21 @@ func resolveProfileInheritance(dataPath string, orcaProfilesPath string, categor
 
 func loadProfileByName(dataPath string, orcaProfilesPath string, category string, name string) (map[string]any, error) {
 	categoryPath := filepath.Join(dataPath, category)
-	candidates := []string{
-		filepath.Join(categoryPath, name+".json"),
-		filepath.Join(categoryPath, sanitizeProfileName(name)+".json"),
-	}
-
-	for _, path := range candidates {
-		profile, err := readProfileFile(path, category, name)
-		if err == nil {
-			return profile, nil
+	targets := profileAliasTargets(dataPath, category, name)
+	for _, target := range targets {
+		candidates := []string{
+			filepath.Join(categoryPath, target+".json"),
+			filepath.Join(categoryPath, sanitizeProfileName(target)+".json"),
 		}
-		if !os.IsNotExist(err) {
-			return nil, err
+
+		for _, path := range candidates {
+			profile, err := readProfileFile(path, category, target)
+			if err == nil {
+				return profile, nil
+			}
+			if !os.IsNotExist(err) {
+				return nil, err
+			}
 		}
 	}
 
@@ -123,15 +126,19 @@ func loadProfileByName(dataPath string, orcaProfilesPath string, category string
 		if err != nil {
 			return nil, err
 		}
-		if profileMatches(profile, strings.TrimSuffix(entry.Name(), ".json"), name) {
-			return profile, nil
+		for _, target := range targets {
+			if profileMatches(profile, strings.TrimSuffix(entry.Name(), ".json"), target) {
+				return profile, nil
+			}
 		}
 	}
 
-	if profile, err := loadBuiltInProfileByName(orcaProfilesPath, category, name); err == nil {
-		return profile, nil
-	} else if !isNotFoundHTTPError(err) {
-		return nil, err
+	for _, target := range targets {
+		if profile, err := loadBuiltInProfileByName(orcaProfilesPath, category, target); err == nil {
+			return profile, nil
+		} else if !isNotFoundHTTPError(err) {
+			return nil, err
+		}
 	}
 
 	return nil, httpx.NewError(http.StatusNotFound, fmt.Sprintf("%s profile %q not found", category, name))
@@ -143,18 +150,21 @@ func loadBuiltInProfileByName(orcaProfilesPath string, category string, name str
 	}
 
 	baseDirs := append(builtInCategoryDirs(orcaProfilesPath, category), orcaProfilesPath)
+	targets := profileAliasTargets("", category, name)
 	for _, dir := range baseDirs {
-		candidates := []string{
-			filepath.Join(dir, name+".json"),
-			filepath.Join(dir, sanitizeProfileName(name)+".json"),
-		}
-		for _, path := range candidates {
-			profile, err := readProfileFile(path, category, name)
-			if err == nil {
-				return profile, nil
+		for _, target := range targets {
+			candidates := []string{
+				filepath.Join(dir, target+".json"),
+				filepath.Join(dir, sanitizeProfileName(target)+".json"),
 			}
-			if !os.IsNotExist(err) {
-				return nil, err
+			for _, path := range candidates {
+				profile, err := readProfileFile(path, category, target)
+				if err == nil {
+					return profile, nil
+				}
+				if !os.IsNotExist(err) {
+					return nil, err
+				}
 			}
 		}
 	}
@@ -173,6 +183,7 @@ func loadBuiltInProfileByName(orcaProfilesPath string, category string, name str
 }
 
 func findProfileRecursive(root string, category string, name string) (map[string]any, error) {
+	targets := profileAliasTargets("", category, name)
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -201,8 +212,10 @@ func findProfileRecursive(root string, category string, name string) (map[string
 		if err != nil {
 			return nil, err
 		}
-		if profileMatches(profile, strings.TrimSuffix(entry.Name(), ".json"), name) {
-			return profile, nil
+		for _, target := range targets {
+			if profileMatches(profile, strings.TrimSuffix(entry.Name(), ".json"), target) {
+				return profile, nil
+			}
 		}
 	}
 
