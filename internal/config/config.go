@@ -11,6 +11,7 @@ type Config struct {
 	DataPath       string
 	OrcaSlicerPath string
 	SliceTimeout   time.Duration
+	CORSOrigins    string
 }
 
 func Load() Config {
@@ -36,5 +37,6 @@ func Load() Config {
 		DataPath:       dataPath,
 		OrcaSlicerPath: os.Getenv("ORCASLICER_PATH"),
 		SliceTimeout:   time.Duration(timeoutSeconds) * time.Second,
+		CORSOrigins:    os.Getenv("CORS_ORIGINS"),
 	}
 }

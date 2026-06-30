@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"path/filepath"
+	"strings"
 
 	"github.com/Brook-sys/orca-slicer-api/internal/httpx"
 )
@@ -38,12 +40,17 @@ func (h Handler) Upload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	name := r.FormValue("name")
-	file, _, err := r.FormFile("file")
+	file, header, err := r.FormFile("file")
 	if err != nil {
 		httpx.WriteError(w, httpx.NewError(http.StatusBadRequest, "File is required"))
 		return
 	}
 	defer file.Close()
+
+	if !validProfileFile(header.Filename) {
+		httpx.WriteError(w, httpx.NewError(http.StatusBadRequest, "Invalid file type. Only JSON files are allowed"))
+		return
+	}
 
 	data, err := io.ReadAll(io.LimitReader(file, maxProfileSize+1))
 	if err != nil {
@@ -82,4 +89,8 @@ func (h Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func validProfileFile(name string) bool {
+	return strings.ToLower(filepath.Ext(name)) == ".json"
 }
