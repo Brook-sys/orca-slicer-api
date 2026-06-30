@@ -146,63 +146,58 @@ func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, 
 	if plate == "" {
 		plate = "1"
 	}
+	args = append(args, "--slice", plate)
+	args = append(args, "--arrange", boolArg(settings.Arrange))
+	args = append(args, "--orient", boolArg(settings.Orient))
 
 	printerPath := ""
 	presetPath := ""
 	filamentPath := ""
-	var printerProfile map[string]any
 
 	if settings.Printer != "" {
-		resolved, err := ResolveProfile(s.DataPath, s.OrcaProfilesPath, "printers", settings.Printer, settings.Overrides["printer"])
+		profile, err := loadRawUserProfile(s.DataPath, "printers", settings.Printer, settings.Overrides["printer"])
 		if err != nil {
 			return nil, fmt.Errorf("printer profile: %w", err)
 		}
-		printerProfile = resolved.Resolved
 		if debug != nil {
-			debug.Printer = printerProfile
+			debug.Printer = profile
 		}
 		printerPath = filepath.Join(inputDir, "printer.json")
-		if err := writeProfile(printerPath, printerProfile); err != nil {
+		if err := writeProfile(printerPath, profile); err != nil {
 			return nil, fmt.Errorf("printer profile: %w", err)
 		}
 	}
 
 	if settings.Preset != "" {
-		resolved, err := ResolveProfile(s.DataPath, s.OrcaProfilesPath, "presets", settings.Preset, settings.Overrides["preset"])
+		profile, err := loadRawUserProfile(s.DataPath, "presets", settings.Preset, settings.Overrides["preset"])
 		if err != nil {
 			return nil, fmt.Errorf("preset profile: %w", err)
 		}
-		if printerProfile != nil {
-			ensureCompatibleProfile(resolved.Resolved, printerProfile)
-		}
 		if debug != nil {
-			debug.Preset = resolved.Resolved
+			debug.Preset = profile
 		}
 		presetPath = filepath.Join(inputDir, "preset.json")
-		if err := writeProfile(presetPath, resolved.Resolved); err != nil {
+		if err := writeProfile(presetPath, profile); err != nil {
 			return nil, fmt.Errorf("preset profile: %w", err)
 		}
 	}
 
 	if settings.Filament != "" {
-		resolved, err := ResolveProfile(s.DataPath, s.OrcaProfilesPath, "filaments", settings.Filament, settings.Overrides["filament"])
+		profile, err := loadRawUserProfile(s.DataPath, "filaments", settings.Filament, settings.Overrides["filament"])
 		if err != nil {
 			return nil, fmt.Errorf("filament profile: %w", err)
 		}
-		if printerProfile != nil {
-			ensureCompatibleProfile(resolved.Resolved, printerProfile)
-		}
 		if debug != nil {
-			debug.Filament = resolved.Resolved
+			debug.Filament = profile
 		}
 		filamentPath = filepath.Join(inputDir, "filament.json")
-		if err := writeProfile(filamentPath, resolved.Resolved); err != nil {
+		if err := writeProfile(filamentPath, profile); err != nil {
 			return nil, fmt.Errorf("filament profile: %w", err)
 		}
 	}
 
 	if printerPath != "" && presetPath != "" {
-		args = append(args, "--load-settings", presetPath+";"+printerPath)
+		args = append(args, "--load-settings", printerPath+";"+presetPath)
 	}
 	if filamentPath != "" {
 		args = append(args, "--load-filaments", filamentPath)
@@ -214,9 +209,6 @@ func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, 
 		args = append(args, "--allow-multicolor-oneplate")
 	}
 
-	args = append(args, "--slice", plate)
-	args = append(args, "--arrange", boolArg(settings.Arrange))
-	args = append(args, "--orient", boolArg(settings.Orient))
 	args = append(args, "--allow-newer-file", "--outputdir", outputDir, inputPath)
 	return args, nil
 }

@@ -63,6 +63,17 @@ func writeProfile(outputPath string, profile map[string]any) error {
 	return os.WriteFile(outputPath, data, 0o644)
 }
 
+func loadRawUserProfile(dataPath string, category string, name string, overrides map[string]any) (map[string]any, error) {
+	if overrides == nil {
+		overrides = map[string]any{}
+	}
+	profile, err := loadProfileByName(dataPath, "", category, name)
+	if err != nil {
+		return nil, err
+	}
+	return merge(copyMap(profile), overrides), nil
+}
+
 func resolveProfileInheritance(dataPath string, orcaProfilesPath string, category string, name string, seen map[string]bool) (map[string]any, error) {
 	key := category + ":" + name
 	if seen[key] {
@@ -308,10 +319,36 @@ func isNotFoundHTTPError(err error) bool {
 }
 
 func ensureCompatibleProfile(profile map[string]any, printer map[string]any) {
-	for _, printerName := range profileIdentityNames(printer, []string{"name", "printer_settings_id"}) {
+	for _, printerName := range profileIdentityNames(printer, []string{"name", "printer_settings_id", "renamed_from", "printer_model"}) {
 		profile["compatible_printers"] = appendStringValue(profile["compatible_printers"], printerName)
 	}
 	profile["compatible_printers_condition"] = ""
+}
+
+func alignSelectedProfiles(printer map[string]any, preset map[string]any, filament map[string]any) {
+	if printer != nil && preset != nil {
+		ensureCompatibleProfile(preset, printer)
+		if presetName := firstProfileIdentity(preset, []string{"print_settings_id", "name", "renamed_from"}); presetName != "" {
+			printer["default_print_profile"] = presetName
+		}
+	}
+	if printer != nil && filament != nil {
+		ensureCompatibleProfile(filament, printer)
+		if filamentName := firstProfileIdentity(filament, []string{"name"}); filamentName != "" {
+			printer["default_filament_profile"] = []string{filamentName}
+		}
+	}
+}
+
+func firstProfileIdentity(profile map[string]any, keys []string) string {
+	for _, key := range keys {
+		value, ok := profile[key].(string)
+		value = strings.TrimSpace(value)
+		if ok && value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func profileIdentityNames(profile map[string]any, keys []string) []string {
