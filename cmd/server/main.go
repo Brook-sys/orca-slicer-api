@@ -38,7 +38,9 @@ func main() {
 	mux.HandleFunc("POST /profiles/{category}/import-url", profileHandler.ImportURL)
 	mux.HandleFunc("POST /profiles/{category}/{name}/update-from-source", profileHandler.UpdateFromSource)
 	mux.HandleFunc("DELETE /profiles/{category}/{name}", profileHandler.Delete)
+	mux.HandleFunc("POST /profiles/resolve", sliceHandler.ResolveProfile)
 	mux.HandleFunc("GET /slice/status", sliceHandler.Status)
+	mux.HandleFunc("POST /slice/resolve-profiles", sliceHandler.ResolveProfiles)
 	mux.HandleFunc("POST /slice", sliceHandler.Slice)
 
 	handler := httpx.Middleware(cfg.CORSOrigins, mux)

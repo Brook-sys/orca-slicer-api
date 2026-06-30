@@ -21,6 +21,64 @@ func (h Handler) Status(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusOK, h.Service.Status())
 }
 
+func (h Handler) ResolveProfile(w http.ResponseWriter, r *http.Request) {
+	var req ResolveProfileRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httpx.WriteError(w, httpx.NewError(http.StatusBadRequest, "Invalid JSON body"))
+		return
+	}
+	if req.Overrides == nil {
+		req.Overrides = map[string]any{}
+	}
+
+	res, err := ResolveProfile(h.Service.DataPath, req.Category, req.Name, req.Overrides)
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, res)
+}
+
+func (h Handler) ResolveProfiles(w http.ResponseWriter, r *http.Request) {
+	var settings Settings
+	if err := json.NewDecoder(r.Body).Decode(&settings); err != nil {
+		httpx.WriteError(w, httpx.NewError(http.StatusBadRequest, "Invalid JSON body"))
+		return
+	}
+	if settings.Overrides == nil {
+		settings.Overrides = map[string]map[string]any{}
+	}
+
+	res := ResolveProfilesResponse{}
+	if settings.Printer != "" {
+		resolved, err := ResolveProfile(h.Service.DataPath, "printers", settings.Printer, settings.Overrides["printer"])
+		if err != nil {
+			httpx.WriteError(w, err)
+			return
+		}
+		res.Printer = &resolved
+	}
+	if settings.Preset != "" {
+		resolved, err := ResolveProfile(h.Service.DataPath, "presets", settings.Preset, settings.Overrides["preset"])
+		if err != nil {
+			httpx.WriteError(w, err)
+			return
+		}
+		res.Preset = &resolved
+	}
+	if settings.Filament != "" {
+		resolved, err := ResolveProfile(h.Service.DataPath, "filaments", settings.Filament, settings.Overrides["filament"])
+		if err != nil {
+			httpx.WriteError(w, err)
+			return
+		}
+		res.Filament = &resolved
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, res)
+}
+
 func (h Handler) Slice(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(maxModelSize); err != nil {
 		httpx.WriteError(w, httpx.NewError(http.StatusBadRequest, "Invalid multipart form"))
