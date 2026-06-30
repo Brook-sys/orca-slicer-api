@@ -1,3 +1,5 @@
+ARG ORCA_VERSION=2.4.1
+
 FROM golang:1.23-bookworm AS build
 
 WORKDIR /src
@@ -10,7 +12,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/orca-sl
 
 FROM ubuntu:24.04 AS orca
 
-ARG ORCA_VERSION=2.4.1
+ARG ORCA_VERSION
 
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends ca-certificates curl fuse file \
@@ -23,6 +25,14 @@ RUN apt-get update \
 	&& rm -rf /var/lib/apt/lists/*
 
 FROM ubuntu:24.04
+
+ARG ORCA_VERSION
+
+LABEL org.opencontainers.image.title="Orca Slicer API"
+LABEL org.opencontainers.image.description="REST API em Go para controlar OrcaSlicer CLI"
+LABEL org.opencontainers.image.source="https://github.com/Brook-sys/orca-slicer-api"
+LABEL org.opencontainers.image.vendor="Brook-sys"
+LABEL org.opencontainers.image.orca.version="${ORCA_VERSION}"
 
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends \
@@ -40,6 +50,7 @@ COPY --from=orca /tmp/squashfs-root /app/squashfs-root
 ENV PORT=3000
 ENV DATA_PATH=/app/data
 ENV ORCASLICER_PATH=/app/squashfs-root/AppRun
+ENV ORCA_VERSION=${ORCA_VERSION}
 
 EXPOSE 3000
 
