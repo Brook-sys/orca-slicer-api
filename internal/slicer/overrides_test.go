@@ -116,6 +116,32 @@ func TestResolveProfileInheritsFromBuiltInProfiles(t *testing.T) {
 	}
 }
 
+func TestResolveProfileFindsBuiltInProcessInArbitrarySubfolder(t *testing.T) {
+	dir := t.TempDir()
+	dataDir := filepath.Join(dir, "data")
+	builtInDir := filepath.Join(dir, "resources", "profiles", "SomeVendor", "deep", "process", "EN4SERIES")
+	if err := os.MkdirAll(filepath.Join(dataDir, "presets"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(builtInDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(builtInDir, "base.json"), []byte(`{"name":"0.20mm Standard @Elegoo Neptune4 (0.4 nozzle)","layer_height":"0.2"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "presets", "custom.json"), []byte(`{"name":"Custom","inherits":"0.20mm Standard @Elegoo Neptune4 (0.4 nozzle)","speed":"120"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, err := ResolveProfile(dataDir, filepath.Join(dir, "resources", "profiles"), "presets", "custom", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.Resolved["layer_height"] != "0.2" {
+		t.Fatalf("expected inherited process profile from arbitrary subfolder")
+	}
+}
+
 func TestResolveProfileMissingParentReturnsClearError(t *testing.T) {
 	dir := t.TempDir()
 	profileDir := filepath.Join(dir, "presets")

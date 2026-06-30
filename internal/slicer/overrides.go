@@ -124,7 +124,7 @@ func loadProfileByName(dataPath string, orcaProfilesPath string, category string
 			return nil, err
 		}
 		profileName, _ := profile["name"].(string)
-		if profileName == name || sanitizeProfileName(profileName) == sanitizeProfileName(name) {
+		if profileNameMatches(profileName, name) {
 			return profile, nil
 		}
 	}
@@ -143,7 +143,7 @@ func loadBuiltInProfileByName(orcaProfilesPath string, category string, name str
 		return nil, httpx.NewError(http.StatusNotFound, fmt.Sprintf("built-in %s profile %q not found", category, name))
 	}
 
-	baseDirs := builtInCategoryDirs(orcaProfilesPath, category)
+	baseDirs := append(builtInCategoryDirs(orcaProfilesPath, category), orcaProfilesPath)
 	for _, dir := range baseDirs {
 		candidates := []string{
 			filepath.Join(dir, name+".json"),
@@ -203,7 +203,7 @@ func findProfileRecursive(root string, category string, name string) (map[string
 			return nil, err
 		}
 		profileName, _ := profile["name"].(string)
-		if profileName == name || sanitizeProfileName(profileName) == sanitizeProfileName(name) {
+		if profileNameMatches(profileName, name) {
 			return profile, nil
 		}
 	}
@@ -290,6 +290,14 @@ func copyMap(input map[string]any) map[string]any {
 func isNotFoundHTTPError(err error) bool {
 	var httpErr *httpx.Error
 	return errors.As(err, &httpErr) && httpErr.Status == http.StatusNotFound
+}
+
+func profileNameMatches(a string, b string) bool {
+	return normalizeProfileName(a) == normalizeProfileName(b)
+}
+
+func normalizeProfileName(value string) string {
+	return strings.ToLower(sanitizeProfileName(value))
 }
 
 func sanitizeProfileName(value string) string {
