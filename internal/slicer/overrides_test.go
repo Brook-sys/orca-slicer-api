@@ -1,9 +1,13 @@
 package slicer
 
 import (
+	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Brook-sys/orca-slicer-api/internal/httpx"
 )
 
 func TestMerge(t *testing.T) {
@@ -38,6 +42,20 @@ func TestMissingKeys(t *testing.T) {
 	warnings := missingKeys(map[string]any{"known": "value"}, map[string]any{"unknown": "value"}, "")
 	if len(warnings) != 1 {
 		t.Fatalf("expected warning for unknown key")
+	}
+}
+
+func TestResolveProfileMissingReturnsHTTPError(t *testing.T) {
+	_, err := ResolveProfile(t.TempDir(), "presets", "missing", nil)
+	if err == nil {
+		t.Fatalf("expected error")
+	}
+	var httpErr *httpx.Error
+	if !errors.As(err, &httpErr) {
+		t.Fatalf("expected http error, got %T", err)
+	}
+	if httpErr.Status != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", httpErr.Status)
 	}
 }
 

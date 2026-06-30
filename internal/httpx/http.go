@@ -3,6 +3,7 @@ package httpx
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 )
 
@@ -31,5 +32,6 @@ func WriteError(w http.ResponseWriter, err error) {
 		WriteJSON(w, httpError.Status, map[string]string{"message": httpError.Message})
 		return
 	}
-	WriteJSON(w, http.StatusInternalServerError, map[string]string{"message": "Internal server error"})
+	slog.Error("internal server error", "error", err)
+	WriteJSON(w, http.StatusInternalServerError, map[string]string{"message": err.Error()})
 }

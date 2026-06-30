@@ -2,8 +2,12 @@ package slicer
 
 import (
 	"encoding/json"
+	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
+
+	"github.com/Brook-sys/orca-slicer-api/internal/httpx"
 )
 
 type ResolveProfileRequest struct {
@@ -26,14 +30,20 @@ type ResolveProfilesResponse struct {
 }
 
 func ResolveProfile(dataPath string, category string, name string, overrides map[string]any) (ResolveProfileResponse, error) {
+	if overrides == nil {
+		overrides = map[string]any{}
+	}
 	data, err := os.ReadFile(filepath.Join(dataPath, category, name+".json"))
 	if err != nil {
+		if os.IsNotExist(err) {
+			return ResolveProfileResponse{}, httpx.NewError(http.StatusNotFound, fmt.Sprintf("%s profile %q not found", category, name))
+		}
 		return ResolveProfileResponse{}, err
 	}
 
 	var base map[string]any
 	if err := json.Unmarshal(data, &base); err != nil {
-		return ResolveProfileResponse{}, err
+		return ResolveProfileResponse{}, httpx.NewError(http.StatusBadRequest, fmt.Sprintf("%s profile %q is invalid JSON", category, name))
 	}
 
 	warnings := missingKeys(base, overrides, "")
