@@ -161,25 +161,50 @@ func loadBuiltInProfileByName(orcaProfilesPath string, category string, name str
 	}
 
 	for _, dir := range baseDirs {
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
+		profile, err := findProfileRecursive(dir, category, name)
+		if err == nil {
+			return profile, nil
+		}
+		if !isNotFoundHTTPError(err) {
 			return nil, err
 		}
-		for _, entry := range entries {
-			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
-				continue
-			}
-			profile, err := readProfileFile(filepath.Join(dir, entry.Name()), category, strings.TrimSuffix(entry.Name(), ".json"))
-			if err != nil {
-				return nil, err
-			}
-			profileName, _ := profile["name"].(string)
-			if profileName == name || sanitizeProfileName(profileName) == sanitizeProfileName(name) {
+	}
+
+	return nil, httpx.NewError(http.StatusNotFound, fmt.Sprintf("built-in %s profile %q not found", category, name))
+}
+
+func findProfileRecursive(root string, category string, name string) (map[string]any, error) {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, httpx.NewError(http.StatusNotFound, fmt.Sprintf("built-in %s profile %q not found", category, name))
+		}
+		return nil, err
+	}
+
+	for _, entry := range entries {
+		path := filepath.Join(root, entry.Name())
+		if entry.IsDir() {
+			profile, err := findProfileRecursive(path, category, name)
+			if err == nil {
 				return profile, nil
 			}
+			if !isNotFoundHTTPError(err) {
+				return nil, err
+			}
+			continue
+		}
+
+		if !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		profile, err := readProfileFile(path, category, strings.TrimSuffix(entry.Name(), ".json"))
+		if err != nil {
+			return nil, err
+		}
+		profileName, _ := profile["name"].(string)
+		if profileName == name || sanitizeProfileName(profileName) == sanitizeProfileName(name) {
+			return profile, nil
 		}
 	}
 

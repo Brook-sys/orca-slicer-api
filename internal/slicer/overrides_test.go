@@ -90,7 +90,7 @@ func TestResolveProfileInheritsByInternalName(t *testing.T) {
 func TestResolveProfileInheritsFromBuiltInProfiles(t *testing.T) {
 	dir := t.TempDir()
 	dataDir := filepath.Join(dir, "data")
-	builtInDir := filepath.Join(dir, "resources", "profiles", "Elegoo", "machine")
+	builtInDir := filepath.Join(dir, "resources", "profiles", "Elegoo", "machine", "EN4SERIES")
 	if err := os.MkdirAll(filepath.Join(dataDir, "printers"), 0o755); err != nil {
 		t.Fatal(err)
 	}
