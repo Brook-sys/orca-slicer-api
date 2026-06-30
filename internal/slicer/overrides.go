@@ -123,8 +123,7 @@ func loadProfileByName(dataPath string, orcaProfilesPath string, category string
 		if err != nil {
 			return nil, err
 		}
-		profileName, _ := profile["name"].(string)
-		if profileNameMatches(profileName, name) {
+		if profileMatches(profile, strings.TrimSuffix(entry.Name(), ".json"), name) {
 			return profile, nil
 		}
 	}
@@ -202,8 +201,7 @@ func findProfileRecursive(root string, category string, name string) (map[string
 		if err != nil {
 			return nil, err
 		}
-		profileName, _ := profile["name"].(string)
-		if profileNameMatches(profileName, name) {
+		if profileMatches(profile, strings.TrimSuffix(entry.Name(), ".json"), name) {
 			return profile, nil
 		}
 	}
@@ -290,6 +288,21 @@ func copyMap(input map[string]any) map[string]any {
 func isNotFoundHTTPError(err error) bool {
 	var httpErr *httpx.Error
 	return errors.As(err, &httpErr) && httpErr.Status == http.StatusNotFound
+}
+
+func profileMatches(profile map[string]any, filename string, target string) bool {
+	candidates := []string{filename}
+	for _, key := range []string{"name", "print_settings_id", "printer_settings_id", "filament_settings_id", "base_id"} {
+		if value, ok := profile[key].(string); ok && value != "" {
+			candidates = append(candidates, value)
+		}
+	}
+	for _, candidate := range candidates {
+		if profileNameMatches(candidate, target) {
+			return true
+		}
+	}
+	return false
 }
 
 func profileNameMatches(a string, b string) bool {
