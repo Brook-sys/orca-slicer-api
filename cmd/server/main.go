@@ -36,6 +36,7 @@ func main() {
 	mux.HandleFunc("GET /profiles/{category}/{name}", profileHandler.Get)
 	mux.HandleFunc("POST /profiles/{category}/upload", profileHandler.Upload)
 	mux.HandleFunc("POST /profiles/{category}/import-url", profileHandler.ImportURL)
+	mux.HandleFunc("POST /profiles/{category}/{name}/update-from-source", profileHandler.UpdateFromSource)
 	mux.HandleFunc("DELETE /profiles/{category}/{name}", profileHandler.Delete)
 	mux.HandleFunc("GET /slice/status", sliceHandler.Status)
 	mux.HandleFunc("POST /slice", sliceHandler.Slice)

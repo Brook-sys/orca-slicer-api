@@ -83,6 +83,16 @@ func (h Handler) ImportURL(w http.ResponseWriter, r *http.Request) {
 	httpx.WriteJSON(w, http.StatusCreated, res)
 }
 
+func (h Handler) UpdateFromSource(w http.ResponseWriter, r *http.Request) {
+	res, err := h.Store.UpdateFromSource(r.Context(), r.PathValue("category"), r.PathValue("name"))
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+
+	httpx.WriteJSON(w, http.StatusOK, res)
+}
+
 func (h Handler) Delete(w http.ResponseWriter, r *http.Request) {
 	if err := h.Store.Delete(r.PathValue("category"), r.PathValue("name")); err != nil {
 		httpx.WriteError(w, err)
