@@ -134,6 +134,17 @@ Healthcheck:
 curl http://localhost:3000/health
 ```
 
+A imagem Docker já inclui as bibliotecas runtime necessárias para o OrcaSlicer AppImage, incluindo OpenGL/GLVND:
+
+```txt
+libopengl0
+libglu1-mesa
+libgl1
+libglx0
+libegl1
+libglvnd0
+```
+
 ## Estrutura de dados
 
 A API usa apenas arquivos.
