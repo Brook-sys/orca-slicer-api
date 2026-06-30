@@ -52,6 +52,7 @@ COPY --from=orca /tmp/squashfs-root /app/squashfs-root
 ENV PORT=3000
 ENV DATA_PATH=/app/data
 ENV ORCASLICER_PATH=/app/squashfs-root/AppRun
+ENV ORCA_PROFILES_PATH=/app/squashfs-root/resources/profiles
 ENV ORCA_VERSION=${ORCA_VERSION}
 
 EXPOSE 3000

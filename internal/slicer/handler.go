@@ -31,7 +31,7 @@ func (h Handler) ResolveProfile(w http.ResponseWriter, r *http.Request) {
 		req.Overrides = map[string]any{}
 	}
 
-	res, err := ResolveProfile(h.Service.DataPath, req.Category, req.Name, req.Overrides)
+	res, err := ResolveProfile(h.Service.DataPath, h.Service.OrcaProfilesPath, req.Category, req.Name, req.Overrides)
 	if err != nil {
 		httpx.WriteError(w, err)
 		return
@@ -52,7 +52,7 @@ func (h Handler) ResolveProfiles(w http.ResponseWriter, r *http.Request) {
 
 	res := ResolveProfilesResponse{}
 	if settings.Printer != "" {
-		resolved, err := ResolveProfile(h.Service.DataPath, "printers", settings.Printer, settings.Overrides["printer"])
+		resolved, err := ResolveProfile(h.Service.DataPath, h.Service.OrcaProfilesPath, "printers", settings.Printer, settings.Overrides["printer"])
 		if err != nil {
 			httpx.WriteError(w, err)
 			return
@@ -60,7 +60,7 @@ func (h Handler) ResolveProfiles(w http.ResponseWriter, r *http.Request) {
 		res.Printer = &resolved
 	}
 	if settings.Preset != "" {
-		resolved, err := ResolveProfile(h.Service.DataPath, "presets", settings.Preset, settings.Overrides["preset"])
+		resolved, err := ResolveProfile(h.Service.DataPath, h.Service.OrcaProfilesPath, "presets", settings.Preset, settings.Overrides["preset"])
 		if err != nil {
 			httpx.WriteError(w, err)
 			return
@@ -68,7 +68,7 @@ func (h Handler) ResolveProfiles(w http.ResponseWriter, r *http.Request) {
 		res.Preset = &resolved
 	}
 	if settings.Filament != "" {
-		resolved, err := ResolveProfile(h.Service.DataPath, "filaments", settings.Filament, settings.Overrides["filament"])
+		resolved, err := ResolveProfile(h.Service.DataPath, h.Service.OrcaProfilesPath, "filaments", settings.Filament, settings.Overrides["filament"])
 		if err != nil {
 			httpx.WriteError(w, err)
 			return

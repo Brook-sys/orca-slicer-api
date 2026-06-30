@@ -46,7 +46,7 @@ func TestMissingKeys(t *testing.T) {
 }
 
 func TestResolveProfileMissingReturnsHTTPError(t *testing.T) {
-	_, err := ResolveProfile(t.TempDir(), "presets", "missing", nil)
+	_, err := ResolveProfile(t.TempDir(), "", "presets", "missing", nil)
 	if err == nil {
 		t.Fatalf("expected error")
 	}
@@ -72,7 +72,7 @@ func TestResolveProfileInheritsByInternalName(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resolved, err := ResolveProfile(dir, "presets", "child", nil)
+	resolved, err := ResolveProfile(dir, "", "presets", "child", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,6 +87,35 @@ func TestResolveProfileInheritsByInternalName(t *testing.T) {
 	}
 }
 
+func TestResolveProfileInheritsFromBuiltInProfiles(t *testing.T) {
+	dir := t.TempDir()
+	dataDir := filepath.Join(dir, "data")
+	builtInDir := filepath.Join(dir, "resources", "profiles", "Elegoo", "machine")
+	if err := os.MkdirAll(filepath.Join(dataDir, "printers"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(builtInDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(builtInDir, "base.json"), []byte(`{"name":"Elegoo Neptune 4 0.4 nozzle","printable_height":"265"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, "printers", "custom.json"), []byte(`{"name":"Custom","inherits":"Elegoo Neptune 4 0.4 nozzle","printable_area":"0x0,235x0,235x235,0x235"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, err := ResolveProfile(dataDir, filepath.Join(dir, "resources", "profiles"), "printers", "custom", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.Resolved["printable_height"] != "265" {
+		t.Fatalf("expected built-in inherited value")
+	}
+	if resolved.Resolved["printable_area"] == "" {
+		t.Fatalf("expected custom value")
+	}
+}
+
 func TestResolveProfileMissingParentReturnsClearError(t *testing.T) {
 	dir := t.TempDir()
 	profileDir := filepath.Join(dir, "presets")
@@ -97,7 +126,7 @@ func TestResolveProfileMissingParentReturnsClearError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := ResolveProfile(dir, "presets", "child", nil)
+	_, err := ResolveProfile(dir, "", "presets", "child", nil)
 	if err == nil {
 		t.Fatalf("expected missing parent error")
 	}
@@ -120,7 +149,7 @@ func TestResolveProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resolved, err := ResolveProfile(dir, "presets", "standard", map[string]any{"layer_height": "0.16", "new_key": "value"})
+	resolved, err := ResolveProfile(dir, "", "presets", "standard", map[string]any{"layer_height": "0.16", "new_key": "value"})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -80,6 +80,7 @@ Variáveis de ambiente:
 | `PORT` | Não | `3000` | Porta HTTP da API. |
 | `DATA_PATH` | Não | `data` | Diretório base onde os profiles e status são salvos. |
 | `ORCASLICER_PATH` | Sim para slicing | vazio | Caminho absoluto do binário/AppRun do OrcaSlicer. |
+| `ORCA_PROFILES_PATH` | Não | `/app/squashfs-root/resources/profiles` | Diretório dos profiles built-in do OrcaSlicer usados para resolver `inherits`. |
 | `SLICE_TIMEOUT_SECONDS` | Não | `1800` | Timeout máximo de slicing em segundos. |
 | `CORS_ORIGINS` | Não | `*` | Lista de origins separados por vírgula. |
 
@@ -87,6 +88,7 @@ No Docker oficial do projeto:
 
 ```txt
 ORCASLICER_PATH=/app/squashfs-root/AppRun
+ORCA_PROFILES_PATH=/app/squashfs-root/resources/profiles
 DATA_PATH=/app/data
 PORT=3000
 ```

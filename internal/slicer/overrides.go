@@ -32,11 +32,11 @@ type ResolveProfilesResponse struct {
 	Filament *ResolveProfileResponse `json:"filament,omitempty"`
 }
 
-func ResolveProfile(dataPath string, category string, name string, overrides map[string]any) (ResolveProfileResponse, error) {
+func ResolveProfile(dataPath string, orcaProfilesPath string, category string, name string, overrides map[string]any) (ResolveProfileResponse, error) {
 	if overrides == nil {
 		overrides = map[string]any{}
 	}
-	base, err := resolveProfileInheritance(dataPath, category, name, map[string]bool{})
+	base, err := resolveProfileInheritance(dataPath, orcaProfilesPath, category, name, map[string]bool{})
 	if err != nil {
 		return ResolveProfileResponse{}, err
 	}
@@ -47,8 +47,8 @@ func ResolveProfile(dataPath string, category string, name string, overrides map
 	return ResolveProfileResponse{Category: category, Name: name, Resolved: resolved, Warnings: warnings}, nil
 }
 
-func writeResolvedProfile(dataPath string, category string, name string, overrides map[string]any, outputPath string) error {
-	resolved, err := ResolveProfile(dataPath, category, name, overrides)
+func writeResolvedProfile(dataPath string, orcaProfilesPath string, category string, name string, overrides map[string]any, outputPath string) error {
+	resolved, err := ResolveProfile(dataPath, orcaProfilesPath, category, name, overrides)
 	if err != nil {
 		return err
 	}
@@ -59,14 +59,14 @@ func writeResolvedProfile(dataPath string, category string, name string, overrid
 	return os.WriteFile(outputPath, data, 0o644)
 }
 
-func resolveProfileInheritance(dataPath string, category string, name string, seen map[string]bool) (map[string]any, error) {
+func resolveProfileInheritance(dataPath string, orcaProfilesPath string, category string, name string, seen map[string]bool) (map[string]any, error) {
 	key := category + ":" + name
 	if seen[key] {
 		return nil, httpx.NewError(http.StatusBadRequest, fmt.Sprintf("circular inherits detected for %s profile %q", category, name))
 	}
 	seen[key] = true
 
-	profile, err := loadProfileByName(dataPath, category, name)
+	profile, err := loadProfileByName(dataPath, orcaProfilesPath, category, name)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +77,7 @@ func resolveProfileInheritance(dataPath string, category string, name string, se
 		return profile, nil
 	}
 
-	parent, err := resolveProfileInheritance(dataPath, category, inherits, seen)
+	parent, err := resolveProfileInheritance(dataPath, orcaProfilesPath, category, inherits, seen)
 	if err != nil {
 		var httpErr *httpx.Error
 		if errors.As(err, &httpErr) && httpErr.Status == http.StatusNotFound {
@@ -91,7 +91,7 @@ func resolveProfileInheritance(dataPath string, category string, name string, se
 	return merged, nil
 }
 
-func loadProfileByName(dataPath string, category string, name string) (map[string]any, error) {
+func loadProfileByName(dataPath string, orcaProfilesPath string, category string, name string) (map[string]any, error) {
 	categoryPath := filepath.Join(dataPath, category)
 	candidates := []string{
 		filepath.Join(categoryPath, name+".json"),
@@ -110,10 +110,9 @@ func loadProfileByName(dataPath string, category string, name string) (map[strin
 
 	entries, err := os.ReadDir(categoryPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, httpx.NewError(http.StatusNotFound, fmt.Sprintf("%s profile %q not found", category, name))
+		if !os.IsNotExist(err) {
+			return nil, err
 		}
-		return nil, err
 	}
 
 	for _, entry := range entries {
@@ -130,7 +129,79 @@ func loadProfileByName(dataPath string, category string, name string) (map[strin
 		}
 	}
 
+	if profile, err := loadBuiltInProfileByName(orcaProfilesPath, category, name); err == nil {
+		return profile, nil
+	} else if !isNotFoundHTTPError(err) {
+		return nil, err
+	}
+
 	return nil, httpx.NewError(http.StatusNotFound, fmt.Sprintf("%s profile %q not found", category, name))
+}
+
+func loadBuiltInProfileByName(orcaProfilesPath string, category string, name string) (map[string]any, error) {
+	if strings.TrimSpace(orcaProfilesPath) == "" {
+		return nil, httpx.NewError(http.StatusNotFound, fmt.Sprintf("built-in %s profile %q not found", category, name))
+	}
+
+	baseDirs := builtInCategoryDirs(orcaProfilesPath, category)
+	for _, dir := range baseDirs {
+		candidates := []string{
+			filepath.Join(dir, name+".json"),
+			filepath.Join(dir, sanitizeProfileName(name)+".json"),
+		}
+		for _, path := range candidates {
+			profile, err := readProfileFile(path, category, name)
+			if err == nil {
+				return profile, nil
+			}
+			if !os.IsNotExist(err) {
+				return nil, err
+			}
+		}
+	}
+
+	for _, dir := range baseDirs {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, err
+		}
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+				continue
+			}
+			profile, err := readProfileFile(filepath.Join(dir, entry.Name()), category, strings.TrimSuffix(entry.Name(), ".json"))
+			if err != nil {
+				return nil, err
+			}
+			profileName, _ := profile["name"].(string)
+			if profileName == name || sanitizeProfileName(profileName) == sanitizeProfileName(name) {
+				return profile, nil
+			}
+		}
+	}
+
+	return nil, httpx.NewError(http.StatusNotFound, fmt.Sprintf("built-in %s profile %q not found", category, name))
+}
+
+func builtInCategoryDirs(orcaProfilesPath string, category string) []string {
+	mapped := map[string]string{
+		"printers":  "machine",
+		"presets":   "process",
+		"filaments": "filament",
+	}[category]
+	if mapped == "" {
+		mapped = category
+	}
+
+	return []string{
+		filepath.Join(orcaProfilesPath, mapped),
+		filepath.Join(orcaProfilesPath, "BBL", mapped),
+		filepath.Join(orcaProfilesPath, "Elegoo", mapped),
+		filepath.Join(orcaProfilesPath, "ELEGOO", mapped),
+	}
 }
 
 func readProfileFile(path string, category string, name string) (map[string]any, error) {
@@ -189,6 +260,11 @@ func copyMap(input map[string]any) map[string]any {
 		output[key] = value
 	}
 	return output
+}
+
+func isNotFoundHTTPError(err error) bool {
+	var httpErr *httpx.Error
+	return errors.As(err, &httpErr) && httpErr.Status == http.StatusNotFound
 }
 
 func sanitizeProfileName(value string) string {

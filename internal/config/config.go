@@ -7,11 +7,12 @@ import (
 )
 
 type Config struct {
-	Port           string
-	DataPath       string
-	OrcaSlicerPath string
-	SliceTimeout   time.Duration
-	CORSOrigins    string
+	Port             string
+	DataPath         string
+	OrcaSlicerPath   string
+	OrcaProfilesPath string
+	SliceTimeout     time.Duration
+	CORSOrigins      string
 }
 
 func Load() Config {
@@ -32,11 +33,17 @@ func Load() Config {
 		}
 	}
 
+	orcaProfilesPath := os.Getenv("ORCA_PROFILES_PATH")
+	if orcaProfilesPath == "" {
+		orcaProfilesPath = "/app/squashfs-root/resources/profiles"
+	}
+
 	return Config{
-		Port:           port,
-		DataPath:       dataPath,
-		OrcaSlicerPath: os.Getenv("ORCASLICER_PATH"),
-		SliceTimeout:   time.Duration(timeoutSeconds) * time.Second,
-		CORSOrigins:    os.Getenv("CORS_ORIGINS"),
+		Port:             port,
+		DataPath:         dataPath,
+		OrcaSlicerPath:   os.Getenv("ORCASLICER_PATH"),
+		OrcaProfilesPath: orcaProfilesPath,
+		SliceTimeout:     time.Duration(timeoutSeconds) * time.Second,
+		CORSOrigins:      os.Getenv("CORS_ORIGINS"),
 	}
 }

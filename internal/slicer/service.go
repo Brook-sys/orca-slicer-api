@@ -17,11 +17,12 @@ import (
 )
 
 type Service struct {
-	DataPath       string
-	OrcaSlicerPath string
-	Timeout        time.Duration
-	State          *StateStore
-	mu             sync.Mutex
+	DataPath         string
+	OrcaSlicerPath   string
+	OrcaProfilesPath string
+	Timeout          time.Duration
+	State            *StateStore
+	mu               sync.Mutex
 }
 
 func (s *Service) Slice(ctx context.Context, filename string, data []byte, settings Settings) (Result, error) {
@@ -135,21 +136,21 @@ func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, 
 
 	if settings.Printer != "" {
 		printerPath = filepath.Join(inputDir, "printer.json")
-		if err := writeResolvedProfile(s.DataPath, "printers", settings.Printer, settings.Overrides["printer"], printerPath); err != nil {
+		if err := writeResolvedProfile(s.DataPath, s.OrcaProfilesPath, "printers", settings.Printer, settings.Overrides["printer"], printerPath); err != nil {
 			return nil, fmt.Errorf("printer profile: %w", err)
 		}
 	}
 
 	if settings.Preset != "" {
 		presetPath = filepath.Join(inputDir, "preset.json")
-		if err := writeResolvedProfile(s.DataPath, "presets", settings.Preset, settings.Overrides["preset"], presetPath); err != nil {
+		if err := writeResolvedProfile(s.DataPath, s.OrcaProfilesPath, "presets", settings.Preset, settings.Overrides["preset"], presetPath); err != nil {
 			return nil, fmt.Errorf("preset profile: %w", err)
 		}
 	}
 
 	if settings.Filament != "" {
 		filamentPath = filepath.Join(inputDir, "filament.json")
-		if err := writeResolvedProfile(s.DataPath, "filaments", settings.Filament, settings.Overrides["filament"], filamentPath); err != nil {
+		if err := writeResolvedProfile(s.DataPath, s.OrcaProfilesPath, "filaments", settings.Filament, settings.Overrides["filament"], filamentPath); err != nil {
 			return nil, fmt.Errorf("filament profile: %w", err)
 		}
 	}

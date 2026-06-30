@@ -24,10 +24,11 @@ func main() {
 	healthHandler := health.Handler{DataPath: cfg.DataPath, OrcaSlicerPath: cfg.OrcaSlicerPath}
 	profileHandler := profiles.Handler{Store: profileStore}
 	sliceService := &slicer.Service{
-		DataPath:       cfg.DataPath,
-		OrcaSlicerPath: cfg.OrcaSlicerPath,
-		Timeout:        cfg.SliceTimeout,
-		State:          slicer.NewStateStore(cfg.DataPath),
+		DataPath:         cfg.DataPath,
+		OrcaSlicerPath:   cfg.OrcaSlicerPath,
+		OrcaProfilesPath: cfg.OrcaProfilesPath,
+		Timeout:          cfg.SliceTimeout,
+		State:            slicer.NewStateStore(cfg.DataPath),
 	}
 	sliceHandler := slicer.Handler{Service: sliceService}
 
