@@ -146,9 +146,6 @@ func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, 
 	if plate == "" {
 		plate = "1"
 	}
-	args = append(args, "--slice", plate)
-	args = append(args, "--arrange", boolArg(settings.Arrange))
-	args = append(args, "--orient", boolArg(settings.Orient))
 
 	printerPath := ""
 	presetPath := ""
@@ -217,6 +214,9 @@ func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, 
 		args = append(args, "--allow-multicolor-oneplate")
 	}
 
+	args = append(args, "--slice", plate)
+	args = append(args, "--arrange", boolArg(settings.Arrange))
+	args = append(args, "--orient", boolArg(settings.Orient))
 	args = append(args, "--allow-newer-file", "--outputdir", outputDir, inputPath)
 	return args, nil
 }
