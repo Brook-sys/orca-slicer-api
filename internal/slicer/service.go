@@ -152,9 +152,18 @@ func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, 
 
 	printerPath := ""
 	presetPath := ""
-	filamentPath := ""
+	filamentPaths := make([]string, 0)
 
-	if settings.Printer != "" {
+	if settings.PrinterProfile != nil {
+		profile := merge(copyMap(settings.PrinterProfile), settings.Overrides["printer"])
+		if debug != nil {
+			debug.Printer = profile
+		}
+		printerPath = filepath.Join(inputDir, "printer.json")
+		if err := writeProfile(printerPath, profile); err != nil {
+			return nil, fmt.Errorf("printer profile: %w", err)
+		}
+	} else if settings.Printer != "" {
 		profile, err := loadRawUserProfile(s.DataPath, "printers", settings.Printer, settings.Overrides["printer"])
 		if err != nil {
 			return nil, fmt.Errorf("printer profile: %w", err)
@@ -168,7 +177,16 @@ func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, 
 		}
 	}
 
-	if settings.Preset != "" {
+	if settings.PresetProfile != nil {
+		profile := merge(copyMap(settings.PresetProfile), settings.Overrides["preset"])
+		if debug != nil {
+			debug.Preset = profile
+		}
+		presetPath = filepath.Join(inputDir, "preset.json")
+		if err := writeProfile(presetPath, profile); err != nil {
+			return nil, fmt.Errorf("preset profile: %w", err)
+		}
+	} else if settings.Preset != "" {
 		profile, err := loadRawUserProfile(s.DataPath, "presets", settings.Preset, settings.Overrides["preset"])
 		if err != nil {
 			return nil, fmt.Errorf("preset profile: %w", err)
@@ -182,25 +200,40 @@ func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, 
 		}
 	}
 
-	if settings.Filament != "" {
+	if len(settings.FilamentProfiles) > 0 {
+		if debug != nil {
+			debug.Filament = settings.FilamentProfiles[0]
+			debug.Filaments = settings.FilamentProfiles
+		}
+		for index, uploaded := range settings.FilamentProfiles {
+			profile := merge(copyMap(uploaded), settings.Overrides["filament"])
+			filamentPath := filepath.Join(inputDir, fmt.Sprintf("filament_%d.json", index+1))
+			if err := writeProfile(filamentPath, profile); err != nil {
+				return nil, fmt.Errorf("filament profile: %w", err)
+			}
+			filamentPaths = append(filamentPaths, filamentPath)
+		}
+	} else if settings.Filament != "" {
 		profile, err := loadRawUserProfile(s.DataPath, "filaments", settings.Filament, settings.Overrides["filament"])
 		if err != nil {
 			return nil, fmt.Errorf("filament profile: %w", err)
 		}
 		if debug != nil {
 			debug.Filament = profile
+			debug.Filaments = []map[string]any{profile}
 		}
-		filamentPath = filepath.Join(inputDir, "filament.json")
+		filamentPath := filepath.Join(inputDir, "filament.json")
 		if err := writeProfile(filamentPath, profile); err != nil {
 			return nil, fmt.Errorf("filament profile: %w", err)
 		}
+		filamentPaths = append(filamentPaths, filamentPath)
 	}
 
 	if printerPath != "" && presetPath != "" {
 		args = append(args, "--load-settings", printerPath+";"+presetPath)
 	}
-	if filamentPath != "" {
-		args = append(args, "--load-filaments", filamentPath)
+	if len(filamentPaths) > 0 {
+		args = append(args, "--load-filaments", strings.Join(filamentPaths, ";"))
 	}
 	if settings.BedType != "" {
 		args = append(args, "--curr-bed-type", settings.BedType)

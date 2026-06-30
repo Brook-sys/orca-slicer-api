@@ -28,22 +28,23 @@ type JobState struct {
 }
 
 type SliceDebug struct {
-	StartedAt    string         `json:"startedAt,omitempty"`
-	FinishedAt   string         `json:"finishedAt,omitempty"`
-	Workdir      string         `json:"workdir,omitempty"`
-	InputPath    string         `json:"inputPath,omitempty"`
-	OutputDir    string         `json:"outputDir,omitempty"`
-	Command      string         `json:"command,omitempty"`
-	Args         []string       `json:"args,omitempty"`
-	Settings     Settings       `json:"settings,omitempty"`
-	Printer      map[string]any `json:"printer,omitempty"`
-	Preset       map[string]any `json:"preset,omitempty"`
-	Filament     map[string]any `json:"filament,omitempty"`
-	Output       string         `json:"output,omitempty"`
-	SlicerError  string         `json:"slicerError,omitempty"`
-	ResultJSON   map[string]any `json:"resultJson,omitempty"`
-	Files        []string       `json:"files,omitempty"`
-	ErrorMessage string         `json:"errorMessage,omitempty"`
+	StartedAt    string           `json:"startedAt,omitempty"`
+	FinishedAt   string           `json:"finishedAt,omitempty"`
+	Workdir      string           `json:"workdir,omitempty"`
+	InputPath    string           `json:"inputPath,omitempty"`
+	OutputDir    string           `json:"outputDir,omitempty"`
+	Command      string           `json:"command,omitempty"`
+	Args         []string         `json:"args,omitempty"`
+	Settings     Settings         `json:"settings,omitempty"`
+	Printer      map[string]any   `json:"printer,omitempty"`
+	Preset       map[string]any   `json:"preset,omitempty"`
+	Filament     map[string]any   `json:"filament,omitempty"`
+	Filaments    []map[string]any `json:"filaments,omitempty"`
+	Output       string           `json:"output,omitempty"`
+	SlicerError  string           `json:"slicerError,omitempty"`
+	ResultJSON   map[string]any   `json:"resultJson,omitempty"`
+	Files        []string         `json:"files,omitempty"`
+	ErrorMessage string           `json:"errorMessage,omitempty"`
 }
 
 type StateStore struct {

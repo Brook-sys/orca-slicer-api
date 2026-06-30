@@ -148,6 +148,10 @@ func (h Handler) Slice(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, err)
 		return
 	}
+	if err := parseUploadedProfiles(r, &settings); err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
 
 	result, err := h.Service.Slice(r.Context(), header.Filename, data, settings)
 	if err != nil {
@@ -187,6 +191,68 @@ func parseSettings(r *http.Request) (Settings, error) {
 	}
 
 	return settings, nil
+}
+
+func parseUploadedProfiles(r *http.Request, settings *Settings) error {
+	printer, err := readJSONProfilePart(r, "printerProfile")
+	if err != nil {
+		return err
+	}
+	preset, err := readJSONProfilePart(r, "presetProfile")
+	if err != nil {
+		return err
+	}
+	filaments, err := readJSONProfileParts(r, "filamentProfile")
+	if err != nil {
+		return err
+	}
+
+	settings.PrinterProfile = printer
+	settings.PresetProfile = preset
+	settings.FilamentProfiles = filaments
+	return nil
+}
+
+func readJSONProfilePart(r *http.Request, field string) (map[string]any, error) {
+	profiles, err := readJSONProfileParts(r, field)
+	if err != nil {
+		return nil, err
+	}
+	if len(profiles) == 0 {
+		return nil, nil
+	}
+	return profiles[0], nil
+}
+
+func readJSONProfileParts(r *http.Request, field string) ([]map[string]any, error) {
+	if r.MultipartForm == nil || r.MultipartForm.File == nil {
+		return nil, nil
+	}
+	files := r.MultipartForm.File[field]
+	profiles := make([]map[string]any, 0, len(files))
+	for _, header := range files {
+		file, err := header.Open()
+		if err != nil {
+			return nil, err
+		}
+		data, readErr := io.ReadAll(io.LimitReader(file, maxModelSize+1))
+		closeErr := file.Close()
+		if readErr != nil {
+			return nil, readErr
+		}
+		if closeErr != nil {
+			return nil, closeErr
+		}
+		if len(data) > maxModelSize {
+			return nil, httpx.NewError(http.StatusBadRequest, field+" is too large")
+		}
+		var profile map[string]any
+		if err := json.Unmarshal(data, &profile); err != nil {
+			return nil, httpx.NewError(http.StatusBadRequest, field+" must be valid JSON")
+		}
+		profiles = append(profiles, profile)
+	}
+	return profiles, nil
 }
 
 func validModelFile(name string) bool {

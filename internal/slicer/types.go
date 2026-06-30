@@ -11,6 +11,9 @@ type Settings struct {
 	ExportType         string                    `json:"exportType"`
 	MulticolorOnePlate bool                      `json:"multicolorOnePlate"`
 	Overrides          map[string]map[string]any `json:"overrides"`
+	PrinterProfile     map[string]any            `json:"-"`
+	PresetProfile      map[string]any            `json:"-"`
+	FilamentProfiles   []map[string]any          `json:"-"`
 }
 
 type Metadata struct {

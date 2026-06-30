@@ -30,14 +30,24 @@ Fluxo principal:
 
 ```txt
 Dashboard/API client
-  -> envia modelo + nomes dos profiles + overrides opcionais
+  -> envia modelo + profiles por nome OU JSONs crus no multipart + overrides opcionais
   -> API cria diretório temporário
-  -> API gera profiles resolvidos temporários
+  -> API grava profiles temporários no workdir
   -> API executa OrcaSlicer CLI
   -> API coleta G-code/3MF gerado
   -> API extrai metadata
   -> API retorna arquivo final
 ```
+
+Modos de profiles no slicing:
+
+```txt
+1. Por nome salvo: printer/preset/filament apontam para DATA_PATH/{category}/{name}.json.
+2. Por arquivo multipart: printerProfile/presetProfile/filamentProfile enviam JSONs crus diretamente no /slice.
+```
+
+No slicing por nome salvo, a API usa o JSON salvo cru com overrides temporários; não resolve `inherits` automaticamente nessa etapa.
+`/profiles/resolve` e `/slice/resolve-profiles` continuam disponíveis apenas para preview/diagnóstico de resolução.
 
 ## Recursos disponíveis
 
@@ -54,6 +64,9 @@ Atualmente implementado:
 - Preview de profile resolvido com overrides.
 - Preview dos profiles resolvidos para um slicing.
 - Slicing síncrono.
+- Slicing com profiles salvos por nome.
+- Slicing com profiles JSON crus enviados no multipart (`printerProfile`, `presetProfile`, `filamentProfile`).
+- Múltiplos `filamentProfile` no mesmo slicing.
 - Lock global para permitir apenas 1 slicing por vez.
 - Timeout/cancelamento do processo OrcaSlicer.
 - Status persistido do último slicing.
@@ -251,8 +264,10 @@ Exemplo:
 Na hora do slicing:
 
 ```txt
-profile original + overrides -> profile temporário resolvido -> OrcaSlicer
+profile salvo cru OU profile multipart cru + overrides -> profile temporário -> OrcaSlicer
 ```
+
+Observação: o slicing não resolve `inherits` automaticamente. A resolução de `inherits` fica nos endpoints de preview (`/profiles/resolve` e `/slice/resolve-profiles`) para diagnóstico.
 
 ### Lock de slicing
 
@@ -778,9 +793,12 @@ Multipart fields:
 | Campo | Tipo | Obrigatório | Descrição |
 |---|---|---:|---|
 | `file` | file | Sim | Modelo `.stl`, `.step`, `.stp` ou `.3mf`. |
-| `printer` | string | Não | Nome do profile em `DATA_PATH/printers`. |
-| `preset` | string | Não | Nome do profile em `DATA_PATH/presets`. |
-| `filament` | string | Não | Nome do profile em `DATA_PATH/filaments`. |
+| `printerProfile` | file `.json` | Não | Profile JSON cru da impressora. Se enviado, tem prioridade sobre `printer`. |
+| `presetProfile` | file `.json` | Não | Profile JSON cru do process/preset. Se enviado, tem prioridade sobre `preset`. |
+| `filamentProfile` | file `.json` | Não | Profile JSON cru de filamento. Pode ser repetido para múltiplos filamentos. Se enviado, tem prioridade sobre `filament`. |
+| `printer` | string | Não | Nome do profile salvo em `DATA_PATH/printers`. Ignorado se `printerProfile` for enviado. |
+| `preset` | string | Não | Nome do profile salvo em `DATA_PATH/presets`. Ignorado se `presetProfile` for enviado. |
+| `filament` | string | Não | Nome do profile salvo em `DATA_PATH/filaments`. Ignorado se ao menos um `filamentProfile` for enviado. |
 | `bedType` | string | Não | Nome do tipo de mesa no OrcaSlicer. |
 | `plate` | string | Não | Plate para fatiar. Padrão: `1`. Use `0` para todos. |
 | `arrange` | bool | Não | Auto-arrange. |
@@ -789,7 +807,7 @@ Multipart fields:
 | `multicolorOnePlate` | bool | Não | Ativa `--allow-multicolor-oneplate`. |
 | `overrides` | string JSON | Não | JSON com overrides por `printer`, `preset`, `filament`. |
 
-Exemplo básico:
+Exemplo básico usando profiles salvos por nome:
 
 ```bash
 curl -X POST http://localhost:3000/slice \
@@ -798,6 +816,48 @@ curl -X POST http://localhost:3000/slice \
   -F preset=standard-020 \
   -F filament=pla-basic \
   -o result.gcode
+```
+
+Exemplo usando JSONs crus enviados no próprio request, no mesmo formato usado por sidecars compatíveis com Bambuddy/AFKFelix:
+
+```bash
+curl -X POST http://localhost:3000/slice \
+  -F file=@model.stl \
+  -F printerProfile=@printer.json \
+  -F presetProfile=@preset.json \
+  -F filamentProfile=@filament.json \
+  -o result.gcode
+```
+
+Exemplo com múltiplos filamentos:
+
+```bash
+curl -X POST http://localhost:3000/slice \
+  -F file=@model.3mf \
+  -F printerProfile=@printer.json \
+  -F presetProfile=@preset.json \
+  -F filamentProfile=@filament-slot-1.json \
+  -F filamentProfile=@filament-slot-2.json \
+  -F plate=1 \
+  -o result.gcode
+```
+
+Observações sobre profiles enviados como arquivo:
+
+```txt
+- A API grava os JSONs recebidos como arquivos temporários no workdir do slicing.
+- A API não resolve inherits desses JSONs.
+- A API não busca parents built-in desses JSONs.
+- A API não altera compatible_printers desses JSONs.
+- A API não persiste esses JSONs em DATA_PATH.
+- Overrides ainda podem ser aplicados temporariamente antes de gravar os JSONs temporários.
+- printerProfile/presetProfile/filamentProfile têm prioridade sobre printer/preset/filament por nome.
+```
+
+Com profiles enviados como arquivo, o comando do OrcaSlicer usa o padrão:
+
+```txt
+--slice <plate> --arrange <0|1> --orient <0|1> --load-settings printer.json;preset.json --load-filaments filament_1.json[;filament_2.json]
 ```
 
 Exemplo com overrides:
