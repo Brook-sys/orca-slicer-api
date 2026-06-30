@@ -58,8 +58,3 @@ jobs:
             ORCA_VERSION=${{ env.ORCA_VERSION }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      - name: Trigger container update webhook
-        if: github.event_name != 'pull_request' && secrets.CONTAINER_WEBHOOK_URL != ''
-        run: |
-          curl --fail --silent --show-error --request POST "${{ secrets.CONTAINER_WEBHOOK_URL }}"
