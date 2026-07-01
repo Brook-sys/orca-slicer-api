@@ -936,6 +936,10 @@ curl -X POST http://localhost:3000/slice \
 
 O pós-processador injeta `;gimage:` e `;simage:` em COLPIC. Atualmente ele usa o STL enviado como fonte do preview, então não se aplica a STEP/3MF.
 
+A thumbnail PNG gerada usa:
+- Cor do modelo: `#22948a` (teal) com sombreamento
+- Fundo: transparente (alpha=0)
+
 Exemplo com overrides:
 
 ```bash

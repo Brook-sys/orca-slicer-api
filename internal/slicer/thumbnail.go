@@ -46,7 +46,7 @@ func addNeptune4ThumbnailsToGCode(gcodePath string, modelData []byte) error {
 	if err != nil {
 		return fmt.Errorf("thumbnail model parse: %w", err)
 	}
-	img := renderThumbnail(triangles, 160, color.RGBA{R: 0x30, G: 0x39, B: 0x4f, A: 0xff})
+	img := renderThumbnail(triangles, 160, color.RGBA{R: 0, G: 0, B: 0, A: 0})
 	block, err := pngThumbnailBlock(img)
 	if err != nil {
 		return err
@@ -151,6 +151,8 @@ func renderThumbnail(triangles []triangle3, size int, background color.RGBA) *im
 	if len(triangles) == 0 {
 		return img
 	}
+	// Neptune 4 thumbnail: teal model (#22948a) on transparent background
+	baseR, baseG, baseB := uint8(0x22), uint8(0x94), uint8(0x8a)
 
 	minX, minY := math.Inf(1), math.Inf(1)
 	maxX, maxY := math.Inf(-1), math.Inf(-1)
@@ -185,8 +187,14 @@ func renderThumbnail(triangles []triangle3, size int, background color.RGBA) *im
 		projected = append(projected, projectedTriangle{points: points, depth: depth / 3, shade: shade})
 	}
 	sort.Slice(projected, func(i, j int) bool { return projected[i].depth < projected[j].depth })
+	// Neptune 4: teal model (#22948a) with shading
+	baseR, baseG, baseB = uint8(0x22), uint8(0x94), uint8(0x8a)
 	for _, tri := range projected {
-		fillTriangle(img, tri.points, color.RGBA{R: tri.shade, G: tri.shade, B: tri.shade, A: 0xff})
+		brightness := float64(tri.shade) / 255.0
+		r := uint8(float64(baseR) * brightness)
+		g := uint8(float64(baseG) * brightness)
+		b := uint8(float64(baseB) * brightness)
+		fillTriangle(img, tri.points, color.RGBA{R: r, G: g, B: b, A: 0xff})
 	}
 	return img
 }
