@@ -12,6 +12,8 @@ Executa slicing síncrono usando OrcaSlicer CLI e retorna o arquivo gerado.
 
 ## Multipart Fields
 
+Para referência consolidada, veja [Parâmetros de Slicing](slice-parameters.md).
+
 ### Arquivo
 
 | Campo | Tipo | Obrigatório | Descrição |

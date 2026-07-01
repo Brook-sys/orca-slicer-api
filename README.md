@@ -2,25 +2,7 @@
 
 REST API em Go para gerenciar profiles JSON e controlar o OrcaSlicer CLI.
 
-## Recursos principais
-
-- Profiles em arquivos JSON, sem banco de dados.
-- Categorias: `printers`, `presets`, `filaments`.
-- Upload de profiles via dashboard/API.
-- Importação de profiles por URL HTTPS raw JSON.
-- Atualização manual de profiles a partir da URL original.
-- Overrides temporários sem alterar o profile salvo.
-- Preview de profiles resolvidos para dashboard.
-- Slicing síncrono com OrcaSlicer.
-- Apenas 1 slicing por vez, com lock global.
-- Status persistido do último slicing.
-- Healthcheck completo.
-- CORS configurável.
-- OpenAPI e Swagger UI.
-- Docker com OrcaSlicer oficial amd64 embutido.
-- Publicação de container via GitHub Actions/GHCR.
-
-## Documentação completa
+## Documentação
 
 Consulte:
 
@@ -35,12 +17,58 @@ http://localhost:3000/api-docs
 http://localhost:3000/openapi.json
 ```
 
-## Execução local
+## Recursos Principais
+
+- Profiles em arquivos JSON, sem banco de dados
+- Categorias: `printers`, `presets`, `filaments`
+- Upload e importação por URL HTTPS raw
+- Source tracking e update-from-source
+- Overrides temporários (não alteram profiles salvos)
+- Preview de profiles resolvidos
+- Slicing síncrono com OrcaSlicer oficial
+- Apenas 1 slicing por vez (lock global)
+- Status e debug persistidos do último slicing
+- Healthcheck completo
+- CORS configurável
+- OpenAPI + Swagger UI
+- Docker com OrcaSlicer amd64 embutido
+- GitHub Actions para GHCR
+
+## Endpoints Principais
+
+| Endpoint | Descrição |
+|----------|-----------|
+| `GET /health` | Healthcheck |
+| `POST /slice` | Executa slicing |
+| `POST /slice/preview` | Preview com thumbnail e detecção de suporte |
+| `GET /slice/status` | Status do último slicing |
+| `GET /slice/debug` | Debug do último slicing |
+| `GET /profiles/{category}` | Lista profiles |
+| `POST /profiles/{category}/upload` | Upload de profile |
+| `POST /profiles/{category}/import-url` | Importa profile por URL |
+| `POST /profiles/resolve` | Resolve profile com overrides |
+| `GET /profile-aliases` | Lista aliases |
+| `GET /openapi.json` | OpenAPI JSON |
+| `GET /api-docs` | Swagger UI |
+
+## Parâmetros Importantes de Slicing
+
+| Campo | Descrição |
+|-------|-----------|
+| `enableSupport` | Força `enable_support` temporário |
+| `brimType` | `true` → `auto_brim`; `false` → `no_brim` |
+| `printSequenceByObject` | `true` → `by object`; `false` → `by layer` |
+| `generateImage` | Gera thumbnail PNG 160x160 |
+| `resolveProfiles` | Resolve `inherits` e built-ins |
+| `sanitizeProfiles` | Ajusta campos problemáticos para CLI |
+
+## Execução Local
 
 ```bash
-export ORCASLICER_PATH=/caminho/para/OrcaSlicer
+export ORCASLICER_PATH=/caminho/para/OrcaSlicer/AppRun
 export DATA_PATH=./data
 export PORT=3000
+export GENERATE_IMAGE=true
 
 go run ./cmd/server
 ```
@@ -48,38 +76,32 @@ go run ./cmd/server
 ## Docker
 
 ```bash
-docker build --build-arg ORCA_VERSION=2.4.1 -t orca-slicer-api .
-mkdir -p ./data
-docker run --rm -p 3000:3000 -v "$(pwd)/data:/app/data" orca-slicer-api
+docker run --rm \
+  -p 3000:3000 \
+  -v "$(pwd)/data:/app/data" \
+  ghcr.io/brook-sys/orca-slicer-api:latest
 ```
 
-## Healthcheck
+## Docker Compose (exemplo)
 
-```bash
-curl http://localhost:3000/health
+```yaml
+services:
+  api:
+    image: ghcr.io/brook-sys/orca-slicer-api:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - GENERATE_IMAGE=true
+      - SLICE_TIMEOUT_SECONDS=3600
 ```
 
-## Exemplo rápido: upload de profiles
+## Contribuição
 
-```bash
-curl -F name=x1c -F file=@printer.json http://localhost:3000/profiles/printers/upload
-curl -F name=standard-020 -F file=@preset.json http://localhost:3000/profiles/presets/upload
-curl -F name=pla-basic -F file=@filament.json http://localhost:3000/profiles/filaments/upload
-```
+A documentação está em `docs/API.md` e `docs/api/`.
 
-## Exemplo rápido: slicing
-
-```bash
-curl -X POST http://localhost:3000/slice \
-  -F file=@model.stl \
-  -F printer=x1c \
-  -F preset=standard-020 \
-  -F filament=pla-basic \
-  -F 'overrides={"preset":{"layer_height":"0.16"}}' \
-  -o result.gcode
-```
-
-## Testes
+Para trabalhar na API, execute:
 
 ```bash
 go test ./...

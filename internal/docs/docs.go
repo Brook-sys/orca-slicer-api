@@ -10,19 +10,33 @@ const OpenAPI = `{
     "description": "REST API em Go para gerenciar profiles JSON e executar slicing com OrcaSlicer."
   },
   "servers": [{ "url": "http://localhost:3000" }],
+  "tags": [
+    { "name": "Health", "description": "Healthcheck e disponibilidade" },
+    { "name": "Profiles", "description": "CRUD/importação de profiles JSON" },
+    { "name": "Aliases", "description": "Aliases para resolução de nomes de profiles" },
+    { "name": "Resolve", "description": "Resolução de inherits, built-ins e overrides" },
+    { "name": "Slicing", "description": "Slicing, preview, status e debug" },
+    { "name": "Docs", "description": "OpenAPI e Swagger UI" }
+  ],
   "paths": {
     "/health": {
       "get": {
+        "tags": ["Health"],
         "summary": "Healthcheck completo",
-        "responses": { "200": { "description": "Healthy" }, "503": { "description": "Unhealthy" } }
+        "responses": {
+          "200": { "description": "Healthy", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResponse" } } } },
+          "503": { "description": "Unhealthy", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/HealthResponse" } } } }
+        }
       }
     },
     "/profile-aliases": {
       "get": {
+        "tags": ["Aliases"],
         "summary": "Lista aliases de profiles",
         "responses": { "200": { "description": "Aliases" } }
       },
       "post": {
+        "tags": ["Aliases"],
         "summary": "Cria ou atualiza alias de profile",
         "requestBody": {
           "required": true,
@@ -35,25 +49,29 @@ const OpenAPI = `{
     },
     "/profile-aliases/{category}/{from}": {
       "delete": {
+        "tags": ["Aliases"],
         "summary": "Remove alias de profile",
         "parameters": [{ "$ref": "#/components/parameters/Category" }, { "name": "from", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "Aliases atualizados" }, "404": { "description": "Alias não encontrado" } }
+        "responses": { "200": { "description": "Aliases atualizados" }, "404": { "$ref": "#/components/responses/NotFound" } }
       }
     },
     "/profiles/{category}": {
       "get": {
+        "tags": ["Profiles"],
         "summary": "Lista profiles com metadata",
         "parameters": [{ "$ref": "#/components/parameters/Category" }],
-        "responses": { "200": { "description": "Profiles" } }
+        "responses": { "200": { "description": "Profiles", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/ProfileListItem" } } } } } }
       }
     },
     "/profiles/{category}/{name}": {
       "get": {
+        "tags": ["Profiles"],
         "summary": "Retorna JSON raw de um profile",
         "parameters": [{ "$ref": "#/components/parameters/Category" }, { "$ref": "#/components/parameters/Name" }],
-        "responses": { "200": { "description": "Profile JSON" }, "404": { "description": "Not found" } }
+        "responses": { "200": { "description": "Profile JSON" }, "404": { "$ref": "#/components/responses/NotFound" } }
       },
       "delete": {
+        "tags": ["Profiles"],
         "summary": "Remove profile",
         "parameters": [{ "$ref": "#/components/parameters/Category" }, { "$ref": "#/components/parameters/Name" }],
         "responses": { "204": { "description": "Deleted" } }
@@ -61,6 +79,7 @@ const OpenAPI = `{
     },
     "/profiles/{category}/upload": {
       "post": {
+        "tags": ["Profiles"],
         "summary": "Upload de profile JSON",
         "parameters": [{ "$ref": "#/components/parameters/Category" }],
         "requestBody": {
@@ -83,6 +102,7 @@ const OpenAPI = `{
     },
     "/profiles/{category}/import-url": {
       "post": {
+        "tags": ["Profiles"],
         "summary": "Importa profile por URL HTTPS raw JSON",
         "parameters": [{ "$ref": "#/components/parameters/Category" }],
         "requestBody": {
@@ -93,11 +113,12 @@ const OpenAPI = `{
             }
           }
         },
-        "responses": { "201": { "description": "Imported" }, "409": { "description": "Already exists" } }
+        "responses": { "201": { "description": "Imported" }, "409": { "$ref": "#/components/responses/Conflict" } }
       }
     },
     "/profiles/{category}/{name}/update-from-source": {
       "post": {
+        "tags": ["Profiles"],
         "summary": "Atualiza profile usando sourceUrl salvo",
         "parameters": [{ "$ref": "#/components/parameters/Category" }, { "$ref": "#/components/parameters/Name" }],
         "responses": { "200": { "description": "Updated or unchanged" } }
@@ -105,6 +126,7 @@ const OpenAPI = `{
     },
     "/profiles/resolve": {
       "post": {
+        "tags": ["Resolve"],
         "summary": "Preview de um profile com overrides aplicados",
         "requestBody": {
           "required": true,
@@ -119,7 +141,9 @@ const OpenAPI = `{
     },
     "/slice": {
       "post": {
+        "tags": ["Slicing"],
         "summary": "Executa slicing síncrono",
+        "description": "Executa OrcaSlicer CLI com profiles por nome ou JSON multipart. Aplica overrides temporários como enableSupport, brimType e printSequenceByObject sem modificar profiles salvos.",
         "requestBody": {
           "required": true,
           "content": {
@@ -153,11 +177,12 @@ const OpenAPI = `{
             }
           }
         },
-        "responses": { "200": { "description": "Arquivo gerado" }, "409": { "description": "Slicer busy" } }
+        "responses": { "200": { "description": "Arquivo gerado" }, "400": { "$ref": "#/components/responses/BadRequest" }, "409": { "$ref": "#/components/responses/Conflict" }, "500": { "$ref": "#/components/responses/InternalError" } }
       }
     },
     "/slice/preview": {
       "post": {
+        "tags": ["Slicing"],
         "summary": "Gera preview JSON com thumbnail e detecção de suporte",
         "description": "Executa slicing forçando enableSupport=true, detecta suporte no G-code e retorna JSON com usesSupport, metadata e thumbnail base64 PNG. Não retorna o G-code binário.",
         "requestBody": {
@@ -173,24 +198,29 @@ const OpenAPI = `{
             "description": "Preview gerado",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PreviewResponse" } } }
           },
-          "409": { "description": "Slicer busy" }
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "500": { "$ref": "#/components/responses/InternalError" }
         }
       }
     },
     "/slice/status": {
       "get": {
+        "tags": ["Slicing"],
         "summary": "Status persistido do último slicing",
-        "responses": { "200": { "description": "Status" } }
+        "responses": { "200": { "description": "Status", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/JobState" } } } } }
       }
     },
     "/slice/debug": {
       "get": {
+        "tags": ["Slicing"],
         "summary": "Debug persistido do último slicing",
-        "responses": { "200": { "description": "Debug do último slicing" } }
+        "responses": { "200": { "description": "Debug do último slicing", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SliceDebug" } } } } }
       }
     },
     "/slice/resolve-profiles": {
       "post": {
+        "tags": ["Resolve"],
         "summary": "Preview dos profiles resolvidos para slicing",
         "requestBody": {
           "required": true,
@@ -205,6 +235,24 @@ const OpenAPI = `{
     }
   },
   "components": {
+    "responses": {
+      "BadRequest": {
+        "description": "Requisição inválida",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": "Invalid multipart form" } } }
+      },
+      "NotFound": {
+        "description": "Recurso não encontrado",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": "Profile not found" } } }
+      },
+      "Conflict": {
+        "description": "Conflito ou slicer ocupado",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": "Slicer is busy" } } }
+      },
+      "InternalError": {
+        "description": "Erro interno",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": "Slicing failed" } } }
+      }
+    },
     "parameters": {
       "Category": {
         "name": "category",
@@ -220,6 +268,89 @@ const OpenAPI = `{
       }
     },
     "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string" }
+        }
+      },
+      "HealthResponse": {
+        "type": "object",
+        "example": {
+          "status": "healthy",
+          "dataPathExists": true,
+          "dataPathWritable": true,
+          "orcaSlicerConfigured": true,
+          "orcaSlicerExists": true,
+          "orcaSlicerExecutable": true
+        },
+        "properties": {
+          "status": { "type": "string", "enum": ["healthy", "unhealthy"] },
+          "dataPathExists": { "type": "boolean" },
+          "dataPathWritable": { "type": "boolean" },
+          "orcaSlicerConfigured": { "type": "boolean" },
+          "orcaSlicerExists": { "type": "boolean" },
+          "orcaSlicerExecutable": { "type": "boolean" }
+        }
+      },
+      "Metadata": {
+        "type": "object",
+        "properties": {
+          "printTime": { "type": "number" },
+          "filamentUsedG": { "type": "number" },
+          "filamentUsedMm": { "type": "number" }
+        }
+      },
+      "JobState": {
+        "type": "object",
+        "example": {
+          "status": "completed",
+          "startedAt": "2026-07-01T00:00:00Z",
+          "finishedAt": "2026-07-01T00:02:00Z",
+          "errorMessage": "",
+          "files": ["/tmp/slice/output/result.gcode"],
+          "metadata": { "printTime": 12000, "filamentUsedG": 18.5, "filamentUsedMm": 6200 }
+        },
+        "properties": {
+          "status": { "type": "string", "enum": ["idle", "processing", "completed", "failed", "cancelled"] },
+          "startedAt": { "type": "string" },
+          "finishedAt": { "type": "string" },
+          "errorMessage": { "type": "string" },
+          "files": { "type": "array", "items": { "type": "string" } },
+          "metadata": { "$ref": "#/components/schemas/Metadata" }
+        }
+      },
+      "SliceDebug": {
+        "type": "object",
+        "properties": {
+          "startedAt": { "type": "string" },
+          "finishedAt": { "type": "string" },
+          "workdir": { "type": "string" },
+          "inputPath": { "type": "string" },
+          "outputDir": { "type": "string" },
+          "command": { "type": "string" },
+          "args": { "type": "array", "items": { "type": "string" } },
+          "settings": { "type": "object" },
+          "printer": { "type": "object" },
+          "preset": { "type": "object" },
+          "filament": { "type": "object" },
+          "filaments": { "type": "array", "items": { "type": "object" } },
+          "output": { "type": "string" },
+          "resultJSON": { "type": "object" },
+          "slicerError": { "type": "string" },
+          "errorMessage": { "type": "string" }
+        }
+      },
+      "ProfileListItem": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "size": { "type": "integer" },
+          "checksum": { "type": "string" },
+          "updatedAt": { "type": "string" },
+          "sourceUrl": { "type": "string" }
+        }
+      },
       "ProfileAlias": {
         "type": "object",
         "required": ["category", "from", "to"],
@@ -278,6 +409,13 @@ const OpenAPI = `{
       },
       "PreviewResponse": {
         "type": "object",
+        "example": {
+          "usesSupport": true,
+          "printTime": 12450.3,
+          "filamentUsedG": 18.7,
+          "filamentUsedMm": 12450.3,
+          "thumbnail": "iVBORw0KGgoAAAANSUhEUgAAAKAAAACgCAYAAACLz2ct..."
+        },
         "properties": {
           "usesSupport": { "type": "boolean" },
           "printTime": { "type": "number" },
