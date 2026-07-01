@@ -181,6 +181,7 @@ func parseSettings(r *http.Request, defaultGenerateImage bool) (Settings, error)
 		SanitizeProfiles:   parseBool(r.FormValue("sanitizeProfiles")),
 		GenerateImage:      parseBool(r.FormValue("generateImage")) || defaultGenerateImage,
 		EnableSupport:      parseBoolPtr(r.FormValue("enableSupport")),
+		BrimType:           parseBoolPtr(r.FormValue("brimType")),
 		Overrides:          map[string]map[string]any{},
 	}
 

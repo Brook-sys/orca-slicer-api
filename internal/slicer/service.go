@@ -195,6 +195,13 @@ func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, 
 		if settings.EnableSupport != nil {
 			profile["enable_support"] = *settings.EnableSupport
 		}
+		if settings.BrimType != nil {
+			if *settings.BrimType {
+				profile["brim_type"] = "auto_brim"
+			} else {
+				profile["brim_type"] = "no_brim"
+			}
+		}
 		if debug != nil {
 			debug.Preset = profile
 		}
@@ -210,6 +217,13 @@ func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, 
 		profile = prepareProfileForSlicing("presets", profile, settings.SanitizeProfiles)
 		if settings.EnableSupport != nil {
 			profile["enable_support"] = *settings.EnableSupport
+		}
+		if settings.BrimType != nil {
+			if *settings.BrimType {
+				profile["brim_type"] = "auto_brim"
+			} else {
+				profile["brim_type"] = "no_brim"
+			}
 		}
 		if debug != nil {
 			debug.Preset = profile

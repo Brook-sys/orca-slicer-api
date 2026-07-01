@@ -14,6 +14,7 @@ type Settings struct {
 	SanitizeProfiles   bool                      `json:"sanitizeProfiles"`
 	GenerateImage      bool                      `json:"generateImage"`
 	EnableSupport      *bool                     `json:"enableSupport"`
+	BrimType           *bool                     `json:"brimType"`
 	Overrides          map[string]map[string]any `json:"overrides"`
 	PrinterProfile     map[string]any            `json:"-"`
 	PresetProfile      map[string]any            `json:"-"`
