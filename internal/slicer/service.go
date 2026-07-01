@@ -147,6 +147,36 @@ func (s *Service) Slice(ctx context.Context, filename string, data []byte, setti
 	return result, nil
 }
 
+func (s *Service) Preview(ctx context.Context, filename string, data []byte, settings Settings) (PreviewResult, error) {
+	trueVal := true
+	settings.EnableSupport = &trueVal
+	settings.GenerateImage = true
+
+	result, err := s.Slice(ctx, filename, data, settings)
+	if err != nil {
+		return PreviewResult{}, err
+	}
+	defer os.RemoveAll(result.Workdir)
+
+	if len(result.Files) == 0 {
+		return PreviewResult{}, httpx.NewError(http.StatusInternalServerError, "No files generated")
+	}
+
+	gcodePath := result.Files[0]
+	usesSupport, _ := detectSupportInGCode(gcodePath)
+
+	thumb := extractThumbnailFromGCode(gcodePath)
+
+	return PreviewResult{
+		UsesSupport:      usesSupport,
+		PrintTimeSeconds: result.Metadata.PrintTimeSeconds,
+		FilamentUsedG:    result.Metadata.FilamentUsedG,
+		FilamentUsedMm:   result.Metadata.FilamentUsedMM,
+		ThumbnailBase64:  thumb,
+		Workdir:          result.Workdir,
+	}, nil
+}
+
 func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, settings Settings, debug *SliceDebug) ([]string, error) {
 	args := make([]string, 0)
 

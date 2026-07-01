@@ -147,6 +147,7 @@ const OpenAPI = `{
                   "enableSupport": { "type": "boolean", "description": "Quando definido (true/false), injeta enable_support no preset temporário. Sobrescreve o valor do preset salvo. Permite ativar/desativar suportes por chamada sem alterar o profile salvo." },
                   "brimType": { "type": "boolean", "description": "Quando definido (true/false), injeta brim_type no preset temporário: true=auto_brim, false=no_brim. Permite controlar brim por chamada sem alterar o profile salvo." },
                   "printSequenceByObject": { "type": "boolean", "description": "Quando true, injeta print_sequence=by object no preset temporário. Quando false (padrão), injeta print_sequence=by layer. Permite controlar sequência de impressão por chamada sem alterar o profile salvo." },
+                  "POST /slice/preview": { "type": "object", "description": "Gera G-code forçando enableSupport=true, detecta se usou suporte, retorna JSON com usesSupport, tempos, filamento e thumbnail base64 PNG. Não retorna o G-code binário." },
                   "overrides": { "type": "string", "description": "JSON string com overrides por printer/preset/filament" }
                 }
               }

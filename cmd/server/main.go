@@ -51,10 +51,11 @@ func main() {
 	mux.HandleFunc("GET /slice/debug", sliceHandler.Debug)
 	mux.HandleFunc("POST /slice/resolve-profiles", sliceHandler.ResolveProfiles)
 	mux.HandleFunc("POST /slice", sliceHandler.Slice)
+	mux.HandleFunc("POST /slice/preview", sliceHandler.Preview)
 
 	handler := httpx.Middleware(cfg.CORSOrigins, mux)
 
-	slog.Info("server listening", "port", cfg.Port)
+	slog.Info("server listening", "port", cfg.Port, "generate_image", cfg.GenerateImage)
 	if err := http.ListenAndServe(":"+cfg.Port, handler); err != nil {
 		slog.Error("server failed", "error", err)
 		os.Exit(1)

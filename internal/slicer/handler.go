@@ -166,6 +166,60 @@ func (h Handler) Slice(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h Handler) Preview(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseMultipartForm(maxModelSize); err != nil {
+		httpx.WriteError(w, httpx.NewError(http.StatusBadRequest, "Invalid multipart form"))
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		httpx.WriteError(w, httpx.NewError(http.StatusBadRequest, "Model file is required"))
+		return
+	}
+	defer file.Close()
+
+	if !validModelFile(header.Filename) {
+		httpx.WriteError(w, httpx.NewError(http.StatusBadRequest, "Invalid file type. Only STL, STEP and 3MF files are allowed"))
+		return
+	}
+
+	data, err := io.ReadAll(io.LimitReader(file, maxModelSize+1))
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	if len(data) > maxModelSize {
+		httpx.WriteError(w, httpx.NewError(http.StatusBadRequest, "Model file is too large"))
+		return
+	}
+
+	settings, err := parseSettings(r, false)
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	if err := parseUploadedProfiles(r, &settings); err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+
+	result, err := h.Service.Preview(r.Context(), header.Filename, data, settings)
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	defer os.RemoveAll(result.Workdir)
+
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{
+		"usesSupport":    result.UsesSupport,
+		"printTime":      result.PrintTimeSeconds,
+		"filamentUsedG":  result.FilamentUsedG,
+		"filamentUsedMm": result.FilamentUsedMm,
+		"thumbnail":      result.ThumbnailBase64,
+	})
+}
+
 func parseSettings(r *http.Request, defaultGenerateImage bool) (Settings, error) {
 	settings := Settings{
 		Printer:               r.FormValue("printer"),

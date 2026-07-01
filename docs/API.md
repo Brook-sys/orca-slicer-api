@@ -813,6 +813,63 @@ Multipart fields:
 | `enableSupport` | bool | Não | Quando definido (`true`/`false`), injeta `enable_support` no preset temporário usado pelo slice. Permite ativar/desativar suportes por requisição sem modificar o profile salvo em disco. |
 | `brimType` | bool | Não | Quando definido (`true`/`false`), injeta `brim_type` no preset temporário: `true` → `auto_brim`, `false` → `no_brim`. Permite controlar brim por requisição sem modificar o profile salvo. |
 | `printSequenceByObject` | bool | Não | Quando `true`, injeta `print_sequence=by object`. Quando `false` (padrão), injeta `print_sequence=by layer`. Permite controlar sequência de impressão por requisição sem modificar o profile salvo. |
+
+## Endpoint de Preview
+
+```
+POST /slice/preview
+```
+
+Este endpoint é projetado para dashboards que precisam de uma pré-visualização rápida para decidir se o modelo requer suporte.
+
+### Comportamento
+
+- Aceita os mesmos campos multipart do `/slice`
+- **Força internamente** `enableSupport=true` (ignora valor enviado pelo cliente)
+- Gera G-code completo
+- Detecta uso de suporte procurando por `;TYPE:SUPPORT` no G-code
+- Retorna **JSON** (não o arquivo binário de G-code)
+
+### Resposta
+
+```json
+{
+  "usesSupport": true,
+  "printTime": 12450.3,
+  "filamentUsedG": 18.7,
+  "filamentUsedMm": 12450.3,
+  "thumbnail": "iVBORw0KGgoAAAANSUhEUgAAAKAAAACgCAYAAACLz2ct..."
+}
+```
+
+Campos:
+
+| Campo | Tipo | Descrição |
+|-------|------|-----------|
+| `usesSupport` | bool | `true` se o G-code gerado contém camadas de suporte |
+| `printTime` | number | Tempo estimado de impressão em segundos |
+| `filamentUsedG` | number | Filamento usado em gramas |
+| `filamentUsedMm` | number | Filamento usado em milímetros |
+| `thumbnail` | string | Thumbnail PNG 160x160 codificada em base64 |
+
+### Regras
+
+- Sempre retorna thumbnail (mesmo se `generateImage=false`)
+- Limpa automaticamente todos os arquivos temporários após a resposta
+- O campo `thumbnail` é vazio se falhar a extração
+
+### Exemplo
+
+```bash
+curl -X POST http://localhost:3000/slice/preview \
+  -F file=@model.stl \
+  -F printer=Elegoo_Neptune_4_0_4_nozzle_-OpenNept4une \
+  -F preset=0_2mm_standard_0_4_ONP \
+  -F filament=PLA_personalizado1_ONP \
+  -F resolveProfiles=true \
+  -F sanitizeProfiles=true
+```
+
 | `overrides` | string JSON | Não | JSON com overrides por `printer`, `preset`, `filament`. |
 
 Exemplo básico usando profiles salvos por nome:

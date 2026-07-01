@@ -33,3 +33,12 @@ type Result struct {
 	Workdir  string
 	Metadata Metadata
 }
+
+type PreviewResult struct {
+	UsesSupport      bool
+	PrintTimeSeconds float64
+	FilamentUsedG    float64
+	FilamentUsedMm   float64
+	ThumbnailBase64  string
+	Workdir          string
+}
