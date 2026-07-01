@@ -809,7 +809,7 @@ Multipart fields:
 | `multicolorOnePlate` | bool | Não | Ativa `--allow-multicolor-oneplate`. |
 | `resolveProfiles` | bool | Não | Quando `true`, resolve `inherits`/built-ins para profiles selecionados por nome antes do slicing. Não afeta `printerProfile`, `presetProfile` ou `filamentProfile` enviados como arquivo. |
 | `sanitizeProfiles` | bool | Não | Quando `true`, ajusta campos conhecidos por quebrar o Orca CLI apenas nos profiles temporários: define `from="system"` em todos os profiles e remove `small_perimeter_speed` em presets. |
-| `useXvfb` | bool | Não | Quando `true`, executa o OrcaSlicer via `xvfb-run -a` para permitir geração de thumbnails embutidas no G-code mesmo em ambiente headless. |
+| `useXvfb` | bool | Não | Quando `true`, executa o OrcaSlicer via `xvfb-run -a --server-args='-screen 0 1024x768x24 +extension GLX +render -noreset'`. Ajuda em ambiente headless e pode permitir thumbnails se o Orca CLI/renderizador suportar no modo atual. |
 | `overrides` | string JSON | Não | JSON com overrides por `printer`, `preset`, `filament`. |
 
 Exemplo básico usando profiles salvos por nome:
@@ -902,6 +902,22 @@ remove preset.small_perimeter_speed
 ```
 
 Esses ajustes foram identificados como necessários para o OrcaSlicer CLI 2.4.1 aceitar alguns profiles custom. Remover `from` completamente não funciona; o valor aceito pelo CLI neste caso é `system`. Os arquivos salvos em `DATA_PATH` não são alterados.
+
+Exemplo tentando gerar thumbnails em ambiente headless via Xvfb:
+
+```bash
+curl -X POST http://localhost:3000/slice \
+  -F file=@model.stl \
+  -F printer=Elegoo_Neptune_4_0_4_nozzle_-OpenNept4une \
+  -F preset=0_2mm_standard_0_4_ONP \
+  -F filament=PLA_personalizado1_ONP \
+  -F resolveProfiles=true \
+  -F sanitizeProfiles=true \
+  -F useXvfb=true \
+  -o result.gcode
+```
+
+Observação sobre thumbnails: `useXvfb=true` garante que o Orca rode sob um display virtual, mas a geração de thumbnail embutida ainda depende do comportamento interno do OrcaSlicer CLI. Em alguns cenários o G-code pode conter apenas os campos `thumbnails`/`thumbnails_format` sem bloco `thumbnail begin`/`thumbnail end`.
 
 Exemplo com overrides:
 

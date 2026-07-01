@@ -143,7 +143,7 @@ const OpenAPI = `{
                   "multicolorOnePlate": { "type": "boolean" },
                   "resolveProfiles": { "type": "boolean", "description": "Quando true, resolve inherits/built-ins para profiles selecionados por nome antes do slicing. Não afeta printerProfile/presetProfile/filamentProfile enviados como arquivo." },
                   "sanitizeProfiles": { "type": "boolean", "description": "Quando true, ajusta campos conhecidos por quebrar o Orca CLI apenas nos profiles temporários: define from=system em todos os profiles e remove small_perimeter_speed em presets." },
-                  "useXvfb": { "type": "boolean", "description": "Quando true, executa o OrcaSlicer via xvfb-run para permitir geração de thumbnails embutidas no G-code mesmo em ambiente headless." },
+                  "useXvfb": { "type": "boolean", "description": "Quando true, executa o OrcaSlicer via xvfb-run com display virtual GLX/render. Pode permitir thumbnails embutidas se o Orca CLI suportar no modo atual." },
                   "overrides": { "type": "string", "description": "JSON string com overrides por printer/preset/filament" }
                 }
               }

@@ -96,12 +96,14 @@ func (s *Service) Slice(ctx context.Context, filename string, data []byte, setti
 	exe := s.OrcaSlicerPath
 	if settings.UseXvfb {
 		if _, err := exec.LookPath("xvfb-run"); err != nil {
-			err := httpx.NewError(http.StatusInternalServerError, "USE_XVFB is enabled but xvfb-run is not installed in the container")
+			err := httpx.NewError(http.StatusInternalServerError, "useXvfb is enabled but xvfb-run is not installed in the container")
 			s.setFailed(startedAt, err.Error())
 			return Result{}, err
 		}
 		exe = "xvfb-run"
-		args = append([]string{"-a", s.OrcaSlicerPath}, args...)
+		args = append([]string{"-a", "--server-args=-screen 0 1024x768x24 +extension GLX +render -noreset", s.OrcaSlicerPath}, args...)
+		debug.Command = exe
+		debug.Args = args
 		slog.Info("using xvfb-run wrapper", "original", s.OrcaSlicerPath)
 	}
 	cmd := exec.CommandContext(cmdCtx, exe, args...)
