@@ -178,6 +178,7 @@ func parseSettings(r *http.Request) (Settings, error) {
 		ExportType:         r.FormValue("exportType"),
 		MulticolorOnePlate: parseBool(r.FormValue("multicolorOnePlate")),
 		ResolveProfiles:    parseBool(r.FormValue("resolveProfiles")),
+		SanitizeProfiles:   parseBool(r.FormValue("sanitizeProfiles")),
 		Overrides:          map[string]map[string]any{},
 	}
 

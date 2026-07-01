@@ -29,6 +29,20 @@ func TestSliceStatusDefaultsIdle(t *testing.T) {
 	}
 }
 
+func TestPrepareProfileForSlicingSanitizesKnownProblemFields(t *testing.T) {
+	printer := prepareProfileForSlicing("printers", map[string]any{"from": "User", "name": "Printer"}, true)
+	if _, ok := printer["from"]; ok {
+		t.Fatalf("expected printer from to be removed")
+	}
+	preset := prepareProfileForSlicing("presets", map[string]any{"from": "User", "small_perimeter_speed": "0", "name": "Preset"}, true)
+	if _, ok := preset["from"]; ok {
+		t.Fatalf("expected preset from to be removed")
+	}
+	if _, ok := preset["small_perimeter_speed"]; ok {
+		t.Fatalf("expected preset small_perimeter_speed to be removed")
+	}
+}
+
 func TestBuildArgsCanResolveNamedProfiles(t *testing.T) {
 	dataDir := t.TempDir()
 	builtInDir := filepath.Join(dataDir, "builtins", "Elegoo", "process")

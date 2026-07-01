@@ -74,6 +74,17 @@ func loadRawUserProfile(dataPath string, category string, name string, overrides
 	return merge(copyMap(profile), overrides), nil
 }
 
+func sanitizeProfileForSlicing(category string, profile map[string]any) map[string]any {
+	if profile == nil {
+		return nil
+	}
+	delete(profile, "from")
+	if category == "presets" {
+		delete(profile, "small_perimeter_speed")
+	}
+	return profile
+}
+
 func resolveProfileInheritance(dataPath string, orcaProfilesPath string, category string, name string, seen map[string]bool) (map[string]any, error) {
 	key := category + ":" + name
 	if seen[key] {

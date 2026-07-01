@@ -807,6 +807,7 @@ Multipart fields:
 | `exportType` | string | Não | `gcode` ou `3mf`. Padrão: `gcode`. |
 | `multicolorOnePlate` | bool | Não | Ativa `--allow-multicolor-oneplate`. |
 | `resolveProfiles` | bool | Não | Quando `true`, resolve `inherits`/built-ins para profiles selecionados por nome antes do slicing. Não afeta `printerProfile`, `presetProfile` ou `filamentProfile` enviados como arquivo. |
+| `sanitizeProfiles` | bool | Não | Quando `true`, remove campos conhecidos por quebrar o Orca CLI apenas dos profiles temporários: `from` em todos os profiles e `small_perimeter_speed` em presets. |
 | `overrides` | string JSON | Não | JSON com overrides por `printer`, `preset`, `filament`. |
 
 Exemplo básico usando profiles salvos por nome:
@@ -875,6 +876,30 @@ curl -X POST http://localhost:3000/slice \
 ```
 
 Esse modo é útil quando um profile salvo herda de profiles built-in do OrcaSlicer. A API gera JSONs temporários resolvidos apenas para o slicing; os arquivos salvos não são alterados.
+
+Exemplo com resolução e sanitização temporária para profiles custom importados/exportados:
+
+```bash
+curl -X POST http://localhost:3000/slice \
+  -F file=@model.stl \
+  -F printer=Elegoo_Neptune_4_0_4_nozzle_-OpenNept4une \
+  -F preset=0_2mm_standard_0_4_ONP \
+  -F filament=PLA_personalizado1_ONP \
+  -F resolveProfiles=true \
+  -F sanitizeProfiles=true \
+  -o result.gcode
+```
+
+`sanitizeProfiles=true` remove apenas dos JSONs temporários:
+
+```txt
+printer.from
+preset.from
+filament.from
+preset.small_perimeter_speed
+```
+
+Esses campos foram identificados como incompatíveis com o OrcaSlicer CLI 2.4.1 em alguns profiles custom. Os arquivos salvos em `DATA_PATH` não são alterados.
 
 Exemplo com overrides:
 

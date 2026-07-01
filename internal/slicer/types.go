@@ -11,6 +11,7 @@ type Settings struct {
 	ExportType         string                    `json:"exportType"`
 	MulticolorOnePlate bool                      `json:"multicolorOnePlate"`
 	ResolveProfiles    bool                      `json:"resolveProfiles"`
+	SanitizeProfiles   bool                      `json:"sanitizeProfiles"`
 	Overrides          map[string]map[string]any `json:"overrides"`
 	PrinterProfile     map[string]any            `json:"-"`
 	PresetProfile      map[string]any            `json:"-"`

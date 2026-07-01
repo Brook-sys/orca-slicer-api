@@ -155,7 +155,7 @@ func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, 
 	filamentPaths := make([]string, 0)
 
 	if settings.PrinterProfile != nil {
-		profile := merge(copyMap(settings.PrinterProfile), settings.Overrides["printer"])
+		profile := prepareProfileForSlicing("printers", merge(copyMap(settings.PrinterProfile), settings.Overrides["printer"]), settings.SanitizeProfiles)
 		if debug != nil {
 			debug.Printer = profile
 		}
@@ -168,6 +168,7 @@ func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, 
 		if err != nil {
 			return nil, fmt.Errorf("printer profile: %w", err)
 		}
+		profile = prepareProfileForSlicing("printers", profile, settings.SanitizeProfiles)
 		if debug != nil {
 			debug.Printer = profile
 		}
@@ -178,7 +179,7 @@ func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, 
 	}
 
 	if settings.PresetProfile != nil {
-		profile := merge(copyMap(settings.PresetProfile), settings.Overrides["preset"])
+		profile := prepareProfileForSlicing("presets", merge(copyMap(settings.PresetProfile), settings.Overrides["preset"]), settings.SanitizeProfiles)
 		if debug != nil {
 			debug.Preset = profile
 		}
@@ -191,6 +192,7 @@ func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, 
 		if err != nil {
 			return nil, fmt.Errorf("preset profile: %w", err)
 		}
+		profile = prepareProfileForSlicing("presets", profile, settings.SanitizeProfiles)
 		if debug != nil {
 			debug.Preset = profile
 		}
@@ -201,23 +203,26 @@ func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, 
 	}
 
 	if len(settings.FilamentProfiles) > 0 {
-		if debug != nil {
-			debug.Filament = settings.FilamentProfiles[0]
-			debug.Filaments = settings.FilamentProfiles
-		}
+		debugFilaments := make([]map[string]any, 0, len(settings.FilamentProfiles))
 		for index, uploaded := range settings.FilamentProfiles {
-			profile := merge(copyMap(uploaded), settings.Overrides["filament"])
+			profile := prepareProfileForSlicing("filaments", merge(copyMap(uploaded), settings.Overrides["filament"]), settings.SanitizeProfiles)
+			debugFilaments = append(debugFilaments, profile)
 			filamentPath := filepath.Join(inputDir, fmt.Sprintf("filament_%d.json", index+1))
 			if err := writeProfile(filamentPath, profile); err != nil {
 				return nil, fmt.Errorf("filament profile: %w", err)
 			}
 			filamentPaths = append(filamentPaths, filamentPath)
 		}
+		if debug != nil && len(debugFilaments) > 0 {
+			debug.Filament = debugFilaments[0]
+			debug.Filaments = debugFilaments
+		}
 	} else if settings.Filament != "" {
 		profile, err := s.loadSelectedProfile("filaments", settings.Filament, settings.Overrides["filament"], settings.ResolveProfiles)
 		if err != nil {
 			return nil, fmt.Errorf("filament profile: %w", err)
 		}
+		profile = prepareProfileForSlicing("filaments", profile, settings.SanitizeProfiles)
 		if debug != nil {
 			debug.Filament = profile
 			debug.Filaments = []map[string]any{profile}
@@ -255,6 +260,13 @@ func (s Service) loadSelectedProfile(category string, name string, overrides map
 		return resolved.Resolved, nil
 	}
 	return loadRawUserProfile(s.DataPath, category, name, overrides)
+}
+
+func prepareProfileForSlicing(category string, profile map[string]any, sanitize bool) map[string]any {
+	if sanitize {
+		return sanitizeProfileForSlicing(category, profile)
+	}
+	return profile
 }
 
 func resultFiles(outputDir string, exportType string) ([]string, error) {
