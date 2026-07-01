@@ -812,6 +812,7 @@ Multipart fields:
 | `generateImage` | bool | Não | Quando `true`, gera thumbnail PNG 160x160 do modelo STL e injeta no G-code. Modelo em cor `#22948a` (teal), fundo transparente. |
 | `enableSupport` | bool | Não | Quando definido (`true`/`false`), injeta `enable_support` no preset temporário usado pelo slice. Permite ativar/desativar suportes por requisição sem modificar o profile salvo em disco. |
 | `brimType` | bool | Não | Quando definido (`true`/`false`), injeta `brim_type` no preset temporário: `true` → `auto_brim`, `false` → `no_brim`. Permite controlar brim por requisição sem modificar o profile salvo. |
+| `printSequenceByObject` | bool | Não | Quando `true`, injeta `print_sequence=by object`. Quando `false` (padrão), injeta `print_sequence=by layer`. Permite controlar sequência de impressão por requisição sem modificar o profile salvo. |
 | `overrides` | string JSON | Não | JSON com overrides por `printer`, `preset`, `filament`. |
 
 Exemplo básico usando profiles salvos por nome:

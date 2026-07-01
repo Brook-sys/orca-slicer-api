@@ -146,6 +146,7 @@ const OpenAPI = `{
                   "generateImage": { "type": "boolean", "description": "Quando true, gera thumbnail PNG 160x160 do modelo STL e injeta no G-code no formato esperado pelo Elegoo Neptune 4. Modelo em #22948a, fundo transparente." },
                   "enableSupport": { "type": "boolean", "description": "Quando definido (true/false), injeta enable_support no preset temporário. Sobrescreve o valor do preset salvo. Permite ativar/desativar suportes por chamada sem alterar o profile salvo." },
                   "brimType": { "type": "boolean", "description": "Quando definido (true/false), injeta brim_type no preset temporário: true=auto_brim, false=no_brim. Permite controlar brim por chamada sem alterar o profile salvo." },
+                  "printSequenceByObject": { "type": "boolean", "description": "Quando true, injeta print_sequence=by object no preset temporário. Quando false (padrão), injeta print_sequence=by layer. Permite controlar sequência de impressão por chamada sem alterar o profile salvo." },
                   "overrides": { "type": "string", "description": "JSON string com overrides por printer/preset/filament" }
                 }
               }

@@ -168,21 +168,22 @@ func (h Handler) Slice(w http.ResponseWriter, r *http.Request) {
 
 func parseSettings(r *http.Request, defaultGenerateImage bool) (Settings, error) {
 	settings := Settings{
-		Printer:            r.FormValue("printer"),
-		Preset:             r.FormValue("preset"),
-		Filament:           r.FormValue("filament"),
-		BedType:            r.FormValue("bedType"),
-		Plate:              r.FormValue("plate"),
-		Arrange:            parseBool(r.FormValue("arrange")),
-		Orient:             parseBool(r.FormValue("orient")),
-		ExportType:         r.FormValue("exportType"),
-		MulticolorOnePlate: parseBool(r.FormValue("multicolorOnePlate")),
-		ResolveProfiles:    parseBool(r.FormValue("resolveProfiles")),
-		SanitizeProfiles:   parseBool(r.FormValue("sanitizeProfiles")),
-		GenerateImage:      parseBool(r.FormValue("generateImage")) || defaultGenerateImage,
-		EnableSupport:      parseBoolPtr(r.FormValue("enableSupport")),
-		BrimType:           parseBoolPtr(r.FormValue("brimType")),
-		Overrides:          map[string]map[string]any{},
+		Printer:               r.FormValue("printer"),
+		Preset:                r.FormValue("preset"),
+		Filament:              r.FormValue("filament"),
+		BedType:               r.FormValue("bedType"),
+		Plate:                 r.FormValue("plate"),
+		Arrange:               parseBool(r.FormValue("arrange")),
+		Orient:                parseBool(r.FormValue("orient")),
+		ExportType:            r.FormValue("exportType"),
+		MulticolorOnePlate:    parseBool(r.FormValue("multicolorOnePlate")),
+		ResolveProfiles:       parseBool(r.FormValue("resolveProfiles")),
+		SanitizeProfiles:      parseBool(r.FormValue("sanitizeProfiles")),
+		GenerateImage:         parseBool(r.FormValue("generateImage")) || defaultGenerateImage,
+		EnableSupport:         parseBoolPtr(r.FormValue("enableSupport")),
+		BrimType:              parseBoolPtr(r.FormValue("brimType")),
+		PrintSequenceByObject: parseBool(r.FormValue("printSequenceByObject")),
+		Overrides:             map[string]map[string]any{},
 	}
 
 	if settings.ExportType != "" && settings.ExportType != "gcode" && settings.ExportType != "3mf" {

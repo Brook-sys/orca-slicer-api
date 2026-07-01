@@ -202,6 +202,11 @@ func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, 
 				profile["brim_type"] = "no_brim"
 			}
 		}
+		if settings.PrintSequenceByObject {
+			profile["print_sequence"] = "by object"
+		} else {
+			profile["print_sequence"] = "by layer"
+		}
 		if debug != nil {
 			debug.Preset = profile
 		}
@@ -224,6 +229,11 @@ func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, 
 			} else {
 				profile["brim_type"] = "no_brim"
 			}
+		}
+		if settings.PrintSequenceByObject {
+			profile["print_sequence"] = "by object"
+		} else {
+			profile["print_sequence"] = "by layer"
 		}
 		if debug != nil {
 			debug.Preset = profile
