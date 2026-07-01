@@ -180,6 +180,7 @@ func parseSettings(r *http.Request, defaultGenerateImage bool) (Settings, error)
 		ResolveProfiles:    parseBool(r.FormValue("resolveProfiles")),
 		SanitizeProfiles:   parseBool(r.FormValue("sanitizeProfiles")),
 		GenerateImage:      parseBool(r.FormValue("generateImage")) || defaultGenerateImage,
+		EnableSupport:      parseBoolPtr(r.FormValue("enableSupport")),
 		Overrides:          map[string]map[string]any{},
 	}
 
@@ -265,4 +266,12 @@ func validModelFile(name string) bool {
 
 func parseBool(value string) bool {
 	return value == "true" || value == "1" || value == "on"
+}
+
+func parseBoolPtr(value string) *bool {
+	if value == "" {
+		return nil
+	}
+	b := parseBool(value)
+	return &b
 }

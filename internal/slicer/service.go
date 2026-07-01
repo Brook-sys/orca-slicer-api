@@ -192,6 +192,9 @@ func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, 
 
 	if settings.PresetProfile != nil {
 		profile := prepareProfileForSlicing("presets", merge(copyMap(settings.PresetProfile), settings.Overrides["preset"]), settings.SanitizeProfiles)
+		if settings.EnableSupport != nil {
+			profile["enable_support"] = *settings.EnableSupport
+		}
 		if debug != nil {
 			debug.Preset = profile
 		}
@@ -205,6 +208,9 @@ func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, 
 			return nil, fmt.Errorf("preset profile: %w", err)
 		}
 		profile = prepareProfileForSlicing("presets", profile, settings.SanitizeProfiles)
+		if settings.EnableSupport != nil {
+			profile["enable_support"] = *settings.EnableSupport
+		}
 		if debug != nil {
 			debug.Preset = profile
 		}

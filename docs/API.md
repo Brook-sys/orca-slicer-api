@@ -810,6 +810,7 @@ Multipart fields:
 | `resolveProfiles` | bool | Não | Quando `true`, resolve `inherits`/built-ins para profiles selecionados por nome antes do slicing. Não afeta `printerProfile`, `presetProfile` ou `filamentProfile` enviados como arquivo. |
 | `sanitizeProfiles` | bool | Não | Quando `true`, ajusta campos conhecidos por quebrar o Orca CLI apenas nos profiles temporários: define `from="system"` em todos os profiles e remove `small_perimeter_speed` em presets. |
 | `generateImage` | bool | Não | Quando `true`, gera thumbnail PNG 160x160 do modelo STL e injeta no G-code. Modelo em cor `#22948a` (teal), fundo transparente. |
+| `enableSupport` | bool | Não | Quando definido (`true`/`false`), injeta `enable_support` no preset temporário usado pelo slice. Permite ativar/desativar suportes por requisição sem modificar o profile salvo em disco. |
 | `overrides` | string JSON | Não | JSON com overrides por `printer`, `preset`, `filament`. |
 
 Exemplo básico usando profiles salvos por nome:
@@ -914,6 +915,7 @@ curl -X POST http://localhost:3000/slice \
   -F resolveProfiles=true \
   -F sanitizeProfiles=true \
   -F generateImage=true \
+  -F enableSupport=true \
   -o result.gcode
 ```
 
@@ -922,6 +924,8 @@ O parâmetro `generateImage=true` ativa a geração de thumbnail PNG 160x160 no 
 - Fundo: transparente (alpha=0)
 
 A thumbnail só é gerada para export `gcode` e quando o modelo é STL. Não se aplica a STEP/3MF.
+
+O parâmetro `enableSupport=true/false` permite controlar suportes por requisição injetando `enable_support` no preset temporário. Isso não modifica o profile salvo.
 
 Exemplo com overrides:
 
