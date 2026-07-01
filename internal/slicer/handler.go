@@ -143,7 +143,7 @@ func (h Handler) Slice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	settings, err := parseSettings(r)
+	settings, err := parseSettings(r, h.Service != nil && h.Service.GenerateImage)
 	if err != nil {
 		httpx.WriteError(w, err)
 		return
@@ -166,7 +166,7 @@ func (h Handler) Slice(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func parseSettings(r *http.Request) (Settings, error) {
+func parseSettings(r *http.Request, defaultGenerateImage bool) (Settings, error) {
 	settings := Settings{
 		Printer:            r.FormValue("printer"),
 		Preset:             r.FormValue("preset"),
@@ -179,7 +179,7 @@ func parseSettings(r *http.Request) (Settings, error) {
 		MulticolorOnePlate: parseBool(r.FormValue("multicolorOnePlate")),
 		ResolveProfiles:    parseBool(r.FormValue("resolveProfiles")),
 		SanitizeProfiles:   parseBool(r.FormValue("sanitizeProfiles")),
-		GenerateImage:      parseBool(r.FormValue("generateImage")),
+		GenerateImage:      parseBool(r.FormValue("generateImage")) || defaultGenerateImage,
 		Overrides:          map[string]map[string]any{},
 	}
 
