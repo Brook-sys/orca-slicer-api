@@ -13,6 +13,7 @@ type Settings struct {
 	ResolveProfiles    bool                      `json:"resolveProfiles"`
 	SanitizeProfiles   bool                      `json:"sanitizeProfiles"`
 	UseXvfb            bool                      `json:"useXvfb"`
+	Neptune4Thumbnails bool                      `json:"neptune4Thumbnails"`
 	Overrides          map[string]map[string]any `json:"overrides"`
 	PrinterProfile     map[string]any            `json:"-"`
 	PresetProfile      map[string]any            `json:"-"`

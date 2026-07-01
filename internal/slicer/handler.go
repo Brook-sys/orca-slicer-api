@@ -180,6 +180,7 @@ func parseSettings(r *http.Request) (Settings, error) {
 		ResolveProfiles:    parseBool(r.FormValue("resolveProfiles")),
 		SanitizeProfiles:   parseBool(r.FormValue("sanitizeProfiles")),
 		UseXvfb:            parseBool(r.FormValue("useXvfb")),
+		Neptune4Thumbnails: parseBool(r.FormValue("neptune4Thumbnails")),
 		Overrides:          map[string]map[string]any{},
 	}
 

@@ -810,6 +810,7 @@ Multipart fields:
 | `resolveProfiles` | bool | Não | Quando `true`, resolve `inherits`/built-ins para profiles selecionados por nome antes do slicing. Não afeta `printerProfile`, `presetProfile` ou `filamentProfile` enviados como arquivo. |
 | `sanitizeProfiles` | bool | Não | Quando `true`, ajusta campos conhecidos por quebrar o Orca CLI apenas nos profiles temporários: define `from="system"` em todos os profiles e remove `small_perimeter_speed` em presets. |
 | `useXvfb` | bool | Não | Quando `true`, executa o OrcaSlicer via `xvfb-run -a --server-args='-screen 0 1024x768x24 +extension GLX +render -noreset'`. Ajuda em ambiente headless e pode permitir thumbnails se o Orca CLI/renderizador suportar no modo atual. |
+| `neptune4Thumbnails` | bool | Não | Quando `true`, pós-processa G-code gerado de STL e injeta thumbnails COLPIC `320x320`/`160x160` compatíveis com Elegoo Neptune 4 usando encoder portado do OrcaSlicer. |
 | `overrides` | string JSON | Não | JSON com overrides por `printer`, `preset`, `filament`. |
 
 Exemplo básico usando profiles salvos por nome:
@@ -918,6 +919,22 @@ curl -X POST http://localhost:3000/slice \
 ```
 
 Observação sobre thumbnails: `useXvfb=true` garante que o Orca rode sob um display virtual, mas a geração de thumbnail embutida ainda depende do comportamento interno do OrcaSlicer CLI. Em alguns cenários o G-code pode conter apenas os campos `thumbnails`/`thumbnails_format` sem bloco `thumbnail begin`/`thumbnail end`.
+
+Para Elegoo Neptune 4, use `neptune4Thumbnails=true` para injetar thumbnails no formato esperado pelo profile oficial:
+
+```bash
+curl -X POST http://localhost:3000/slice \
+  -F file=@model.stl \
+  -F printer=Elegoo_Neptune_4_0_4_nozzle_-OpenNept4une \
+  -F preset=0_2mm_standard_0_4_ONP \
+  -F filament=PLA_personalizado1_ONP \
+  -F resolveProfiles=true \
+  -F sanitizeProfiles=true \
+  -F neptune4Thumbnails=true \
+  -o result.gcode
+```
+
+O pós-processador injeta `;gimage:` e `;simage:` em COLPIC. Atualmente ele usa o STL enviado como fonte do preview, então não se aplica a STEP/3MF.
 
 Exemplo com overrides:
 

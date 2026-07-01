@@ -142,6 +142,16 @@ func (s *Service) Slice(ctx context.Context, filename string, data []byte, setti
 		return Result{}, err
 	}
 
+	if settings.Neptune4Thumbnails && settings.ExportType != "3mf" {
+		for _, file := range files {
+			if err := addNeptune4ThumbnailsToGCode(file, data); err != nil {
+				debug.ErrorMessage = err.Error()
+				s.setFailed(startedAt, err.Error())
+				return Result{}, httpx.NewError(http.StatusInternalServerError, "Neptune 4 thumbnail generation failed: "+err.Error())
+			}
+		}
+	}
+
 	metadata := AggregateMetadata(files)
 	result := Result{Files: files, Workdir: workdir, Metadata: metadata}
 	s.setState(JobState{Status: StatusCompleted, StartedAt: startedAt, FinishedAt: nowString(), Files: files, Metadata: metadata})
