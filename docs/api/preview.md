@@ -1,18 +1,60 @@
 # Preview
 
-```
-POST /slice/preview
-```
+## `POST /slice/preview`
 
-Endpoint projetado para dashboards que precisam de uma pré-visualização rápida.
+Gera uma prévia para dashboard, sem retornar o G-code final.
+
+O endpoint executa slicing real, força suporte ativo e retorna JSON com:
+
+- Se o OrcaSlicer gerou suporte
+- Tempo estimado
+- Filamento estimado
+- Thumbnail PNG base64
+
+## Uso Principal
+
+Use este endpoint antes do `/slice` quando o dashboard precisa decidir se deve avisar o usuário sobre suportes.
 
 ## Comportamento
 
-- Força `enableSupport=true` internamente (ignora valor enviado)
-- Gera G-code completo
-- Detecta uso de suporte procurando por `;TYPE:SUPPORT`
-- Retorna **JSON** (não o G-code binário)
-- Sempre gera thumbnail PNG 160x160
+- Entrada: `multipart/form-data`
+- Aceita os mesmos campos principais do `/slice`
+- Força `enableSupport=true` internamente
+- Gera G-code completo em workdir temporário
+- Detecta suporte procurando por marcadores no G-code
+- Extrai thumbnail PNG 160x160
+- Retorna JSON
+- Remove arquivos temporários após a resposta
+
+## Multipart Fields
+
+Mesmos campos do `/slice`, com observações:
+
+| Campo | Comportamento no Preview |
+|-------|--------------------------|
+| `file` | Obrigatório |
+| `printer` / `preset` / `filament` | Igual ao `/slice` |
+| `printerProfile` / `presetProfile` / `filamentProfile` | Igual ao `/slice` |
+| `resolveProfiles` | Recomendado `true` |
+| `sanitizeProfiles` | Recomendado `true` para profiles custom |
+| `enableSupport` | Ignorado; preview força `true` |
+| `generateImage` | Ignorado; preview sempre gera thumbnail |
+| `brimType` | Respeitado se enviado |
+| `printSequenceByObject` | Respeitado se enviado |
+
+## Detecção de Suporte
+
+A detecção é feita no G-code gerado.
+
+Atualmente considera suporte quando encontra marcadores como:
+
+```txt
+;TYPE:SUPPORT
+; support
+;TYPE:SUPPORT INTERFACE
+```
+
+Isso reflete o que o OrcaSlicer realmente gerou, não uma análise geométrica prévia.
 
 ## Resposta
 
@@ -26,21 +68,15 @@ Endpoint projetado para dashboards que precisam de uma pré-visualização rápi
 }
 ```
 
-## Campos
+## Campos da Resposta
 
 | Campo | Tipo | Descrição |
 |-------|------|-----------|
-| `usesSupport` | bool | `true` se encontrou camadas de suporte |
-| `printTime` | number | Tempo estimado em segundos |
-| `filamentUsedG` | number | Filamento em gramas |
-| `filamentUsedMm` | number | Filamento em milímetros |
-| `thumbnail` | string | PNG 160x160 em base64 |
-
-## Regras
-
-- `thumbnail` é sempre retornado (mesmo se `generateImage=false`)
-- Arquivos temporários são limpos automaticamente
-- `thumbnail` pode vir vazio se falhar a extração
+| `usesSupport` | bool | `true` se o G-code gerado contém suporte |
+| `printTime` | number | Tempo estimado de impressão em segundos |
+| `filamentUsedG` | number | Filamento usado em gramas |
+| `filamentUsedMm` | number | Filamento usado em milímetros |
+| `thumbnail` | string | PNG 160x160 codificado em base64 |
 
 ## Exemplo
 
@@ -50,5 +86,15 @@ curl -X POST http://localhost:3000/slice/preview \
   -F printer=Elegoo_Neptune_4_0_4_nozzle_-OpenNept4une \
   -F preset=0_2mm_standard_0_4_ONP \
   -F filament=PLA_personalizado1_ONP \
-  -F resolveProfiles=true
+  -F resolveProfiles=true \
+  -F sanitizeProfiles=true
 ```
+
+## Erros Comuns
+
+| Status | Causa |
+|--------|-------|
+| `400` | arquivo ausente ou multipart inválido |
+| `409` | slicer ocupado |
+| `500` | falha no OrcaSlicer ou geração de imagem |
+| `408` | timeout/cancelamento |

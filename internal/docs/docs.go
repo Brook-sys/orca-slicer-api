@@ -147,7 +147,6 @@ const OpenAPI = `{
                   "enableSupport": { "type": "boolean", "description": "Quando definido (true/false), injeta enable_support no preset temporário. Sobrescreve o valor do preset salvo. Permite ativar/desativar suportes por chamada sem alterar o profile salvo." },
                   "brimType": { "type": "boolean", "description": "Quando definido (true/false), injeta brim_type no preset temporário: true=auto_brim, false=no_brim. Permite controlar brim por chamada sem alterar o profile salvo." },
                   "printSequenceByObject": { "type": "boolean", "description": "Quando true, injeta print_sequence=by object no preset temporário. Quando false (padrão), injeta print_sequence=by layer. Permite controlar sequência de impressão por chamada sem alterar o profile salvo." },
-                  "POST /slice/preview": { "type": "object", "description": "Gera G-code forçando enableSupport=true, detecta se usou suporte, retorna JSON com usesSupport, tempos, filamento e thumbnail base64 PNG. Não retorna o G-code binário." },
                   "overrides": { "type": "string", "description": "JSON string com overrides por printer/preset/filament" }
                 }
               }
@@ -155,6 +154,27 @@ const OpenAPI = `{
           }
         },
         "responses": { "200": { "description": "Arquivo gerado" }, "409": { "description": "Slicer busy" } }
+      }
+    },
+    "/slice/preview": {
+      "post": {
+        "summary": "Gera preview JSON com thumbnail e detecção de suporte",
+        "description": "Executa slicing forçando enableSupport=true, detecta suporte no G-code e retorna JSON com usesSupport, metadata e thumbnail base64 PNG. Não retorna o G-code binário.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": { "$ref": "#/components/schemas/SliceMultipartRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Preview gerado",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PreviewResponse" } } }
+          },
+          "409": { "description": "Slicer busy" }
+        }
       }
     },
     "/slice/status": {
@@ -234,6 +254,36 @@ const OpenAPI = `{
           "preset": { "type": "string" },
           "filament": { "type": "string" },
           "overrides": { "type": "object" }
+        }
+      },
+      "SliceMultipartRequest": {
+        "type": "object",
+        "required": ["file"],
+        "properties": {
+          "file": { "type": "string", "format": "binary" },
+          "printer": { "type": "string" },
+          "preset": { "type": "string" },
+          "filament": { "type": "string" },
+          "printerProfile": { "type": "string", "format": "binary" },
+          "presetProfile": { "type": "string", "format": "binary" },
+          "filamentProfile": { "type": "array", "items": { "type": "string", "format": "binary" } },
+          "resolveProfiles": { "type": "boolean" },
+          "sanitizeProfiles": { "type": "boolean" },
+          "generateImage": { "type": "boolean" },
+          "enableSupport": { "type": "boolean" },
+          "brimType": { "type": "boolean" },
+          "printSequenceByObject": { "type": "boolean" },
+          "overrides": { "type": "string" }
+        }
+      },
+      "PreviewResponse": {
+        "type": "object",
+        "properties": {
+          "usesSupport": { "type": "boolean" },
+          "printTime": { "type": "number" },
+          "filamentUsedG": { "type": "number" },
+          "filamentUsedMm": { "type": "number" },
+          "thumbnail": { "type": "string", "description": "PNG 160x160 em base64" }
         }
       }
     }
