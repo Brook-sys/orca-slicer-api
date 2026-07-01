@@ -5,23 +5,25 @@ import (
 	"image/color"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
-func TestEncodeColPicProducesData(t *testing.T) {
+func TestPNGThumbnailBlockProducesReferenceFormat(t *testing.T) {
 	img := renderThumbnail([]triangle3{{
 		a: point3{x: 0, y: 0, z: 0},
 		b: point3{x: 10, y: 0, z: 0},
 		c: point3{x: 0, y: 10, z: 10},
-	}}, 32, neptune4Background())
+	}}, 160, neptune4Background())
 
-	encoded := encodeColPic(img)
-	if encoded == "" {
-		t.Fatal("expected encoded COLPIC data")
+	block, err := pngThumbnailBlock(img)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if strings.Contains(encoded, "\\") {
-		t.Fatal("COLPIC output must escape backslash as tilde")
+	if !bytes.Contains(block, []byte("; THUMBNAIL_BLOCK_START")) || !bytes.Contains(block, []byte("; thumbnail begin 160x160")) || !bytes.Contains(block, []byte("; thumbnail end")) {
+		t.Fatalf("unexpected thumbnail block: %q", string(block[:min(len(block), 120)]))
+	}
+	if !bytes.Contains(block, []byte("iVBORw0KGgo")) {
+		t.Fatal("expected PNG base64 data")
 	}
 }
 
@@ -39,8 +41,8 @@ func TestAddNeptune4ThumbnailsToGCode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Contains(data, []byte(";gimage:")) || !bytes.Contains(data, []byte(";simage:")) {
-		t.Fatalf("expected COLPIC thumbnail blocks, got %q", string(data[:min(len(data), 80)]))
+	if !bytes.Contains(data, []byte("; THUMBNAIL_BLOCK_START")) || !bytes.Contains(data, []byte("; thumbnail begin 160x160")) {
+		t.Fatalf("expected PNG thumbnail blocks, got %q", string(data[:min(len(data), 80)]))
 	}
 	if !bytes.Contains(data, []byte("G28")) {
 		t.Fatal("expected original G-code to be preserved")

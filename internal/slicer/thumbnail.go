@@ -2,11 +2,13 @@ package slicer
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"image"
 	"image/color"
+	"image/png"
 	"math"
 	"os"
 	"sort"
@@ -37,22 +39,43 @@ func addNeptune4ThumbnailsToGCode(gcodePath string, modelData []byte) error {
 	if err != nil {
 		return err
 	}
-	if bytes.Contains(data, []byte(";gimage:")) || bytes.Contains(data, []byte(";simage:")) {
+	if bytes.Contains(data, []byte("; thumbnail begin")) {
 		return nil
 	}
 	triangles, err := parseSTLTriangles(modelData)
 	if err != nil {
 		return fmt.Errorf("thumbnail model parse: %w", err)
 	}
-	large := renderThumbnail(triangles, 320, color.RGBA{R: 0x30, G: 0x39, B: 0x4f, A: 0xff})
-	small := renderThumbnail(triangles, 160, color.RGBA{R: 0x30, G: 0x39, B: 0x4f, A: 0xff})
-	largeEncoded := encodeColPic(large)
-	smallEncoded := encodeColPic(small)
-	if largeEncoded == "" || smallEncoded == "" {
-		return errors.New("thumbnail COLPIC encode failed")
+	img := renderThumbnail(triangles, 160, color.RGBA{R: 0x30, G: 0x39, B: 0x4f, A: 0xff})
+	block, err := pngThumbnailBlock(img)
+	if err != nil {
+		return err
 	}
-	prefix := []byte(";gimage:" + largeEncoded + "\n\n;simage:" + smallEncoded + "\n\n")
-	return os.WriteFile(gcodePath, append(prefix, data...), 0o644)
+	return os.WriteFile(gcodePath, append(block, data...), 0o644)
+}
+
+func pngThumbnailBlock(img image.Image) ([]byte, error) {
+	var pngData bytes.Buffer
+	if err := png.Encode(&pngData, img); err != nil {
+		return nil, err
+	}
+	encoded := base64.StdEncoding.EncodeToString(pngData.Bytes())
+	var block strings.Builder
+	block.WriteString("; THUMBNAIL_BLOCK_START\n\n;\n")
+	block.WriteString(fmt.Sprintf("; thumbnail begin 160x160 %d\n", len(encoded)))
+	for len(encoded) > 78 {
+		block.WriteString("; ")
+		block.WriteString(encoded[:78])
+		block.WriteString("\n")
+		encoded = encoded[78:]
+	}
+	if encoded != "" {
+		block.WriteString("; ")
+		block.WriteString(encoded)
+		block.WriteString("\n")
+	}
+	block.WriteString("; thumbnail end\n; THUMBNAIL_BLOCK_END\n\n")
+	return []byte(block.String()), nil
 }
 
 func parseSTLTriangles(data []byte) ([]triangle3, error) {
