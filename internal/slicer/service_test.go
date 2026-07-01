@@ -31,12 +31,12 @@ func TestSliceStatusDefaultsIdle(t *testing.T) {
 
 func TestPrepareProfileForSlicingSanitizesKnownProblemFields(t *testing.T) {
 	printer := prepareProfileForSlicing("printers", map[string]any{"from": "User", "name": "Printer"}, true)
-	if _, ok := printer["from"]; ok {
-		t.Fatalf("expected printer from to be removed")
+	if printer["from"] != "system" {
+		t.Fatalf("expected printer from to be set to system")
 	}
 	preset := prepareProfileForSlicing("presets", map[string]any{"from": "User", "small_perimeter_speed": "0", "name": "Preset"}, true)
-	if _, ok := preset["from"]; ok {
-		t.Fatalf("expected preset from to be removed")
+	if preset["from"] != "system" {
+		t.Fatalf("expected preset from to be set to system")
 	}
 	if _, ok := preset["small_perimeter_speed"]; ok {
 		t.Fatalf("expected preset small_perimeter_speed to be removed")

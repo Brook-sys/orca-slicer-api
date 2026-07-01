@@ -807,7 +807,7 @@ Multipart fields:
 | `exportType` | string | Não | `gcode` ou `3mf`. Padrão: `gcode`. |
 | `multicolorOnePlate` | bool | Não | Ativa `--allow-multicolor-oneplate`. |
 | `resolveProfiles` | bool | Não | Quando `true`, resolve `inherits`/built-ins para profiles selecionados por nome antes do slicing. Não afeta `printerProfile`, `presetProfile` ou `filamentProfile` enviados como arquivo. |
-| `sanitizeProfiles` | bool | Não | Quando `true`, remove campos conhecidos por quebrar o Orca CLI apenas dos profiles temporários: `from` em todos os profiles e `small_perimeter_speed` em presets. |
+| `sanitizeProfiles` | bool | Não | Quando `true`, ajusta campos conhecidos por quebrar o Orca CLI apenas nos profiles temporários: define `from="system"` em todos os profiles e remove `small_perimeter_speed` em presets. |
 | `overrides` | string JSON | Não | JSON com overrides por `printer`, `preset`, `filament`. |
 
 Exemplo básico usando profiles salvos por nome:
@@ -890,16 +890,16 @@ curl -X POST http://localhost:3000/slice \
   -o result.gcode
 ```
 
-`sanitizeProfiles=true` remove apenas dos JSONs temporários:
+`sanitizeProfiles=true` ajusta apenas os JSONs temporários:
 
 ```txt
-printer.from
-preset.from
-filament.from
-preset.small_perimeter_speed
+printer.from = "system"
+preset.from = "system"
+filament.from = "system"
+remove preset.small_perimeter_speed
 ```
 
-Esses campos foram identificados como incompatíveis com o OrcaSlicer CLI 2.4.1 em alguns profiles custom. Os arquivos salvos em `DATA_PATH` não são alterados.
+Esses ajustes foram identificados como necessários para o OrcaSlicer CLI 2.4.1 aceitar alguns profiles custom. Remover `from` completamente não funciona; o valor aceito pelo CLI neste caso é `system`. Os arquivos salvos em `DATA_PATH` não são alterados.
 
 Exemplo com overrides:
 

@@ -78,7 +78,7 @@ func sanitizeProfileForSlicing(category string, profile map[string]any) map[stri
 	if profile == nil {
 		return nil
 	}
-	delete(profile, "from")
+	profile["from"] = "system"
 	if category == "presets" {
 		delete(profile, "small_perimeter_speed")
 	}

@@ -142,7 +142,7 @@ const OpenAPI = `{
                   "exportType": { "type": "string", "enum": ["gcode", "3mf"] },
                   "multicolorOnePlate": { "type": "boolean" },
                   "resolveProfiles": { "type": "boolean", "description": "Quando true, resolve inherits/built-ins para profiles selecionados por nome antes do slicing. Não afeta printerProfile/presetProfile/filamentProfile enviados como arquivo." },
-                  "sanitizeProfiles": { "type": "boolean", "description": "Quando true, remove campos conhecidos por quebrar o Orca CLI apenas dos profiles temporários: from em todos os profiles e small_perimeter_speed em presets." },
+                  "sanitizeProfiles": { "type": "boolean", "description": "Quando true, ajusta campos conhecidos por quebrar o Orca CLI apenas nos profiles temporários: define from=system em todos os profiles e remove small_perimeter_speed em presets." },
                   "overrides": { "type": "string", "description": "JSON string com overrides por printer/preset/filament" }
                 }
               }
