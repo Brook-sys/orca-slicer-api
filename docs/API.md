@@ -809,6 +809,7 @@ Multipart fields:
 | `multicolorOnePlate` | bool | Não | Ativa `--allow-multicolor-oneplate`. |
 | `resolveProfiles` | bool | Não | Quando `true`, resolve `inherits`/built-ins para profiles selecionados por nome antes do slicing. Não afeta `printerProfile`, `presetProfile` ou `filamentProfile` enviados como arquivo. |
 | `sanitizeProfiles` | bool | Não | Quando `true`, ajusta campos conhecidos por quebrar o Orca CLI apenas nos profiles temporários: define `from="system"` em todos os profiles e remove `small_perimeter_speed` em presets. |
+| `useXvfb` | bool | Não | Quando `true`, executa o OrcaSlicer via `xvfb-run -a` para permitir geração de thumbnails embutidas no G-code mesmo em ambiente headless. |
 | `overrides` | string JSON | Não | JSON com overrides por `printer`, `preset`, `filament`. |
 
 Exemplo básico usando profiles salvos por nome:

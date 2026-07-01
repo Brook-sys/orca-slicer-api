@@ -94,7 +94,7 @@ func (s *Service) Slice(ctx context.Context, filename string, data []byte, setti
 	defer cancel()
 
 	exe := s.OrcaSlicerPath
-	if s.UseXvfb {
+	if settings.UseXvfb {
 		exe = "xvfb-run"
 		args = append([]string{"-a", s.OrcaSlicerPath}, args...)
 	}
