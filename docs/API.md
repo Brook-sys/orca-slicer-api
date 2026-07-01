@@ -95,6 +95,7 @@ Variáveis de ambiente:
 | `DATA_PATH` | Não | `data` | Diretório base onde os profiles e status são salvos. |
 | `ORCASLICER_PATH` | Sim para slicing | vazio | Caminho absoluto do binário/AppRun do OrcaSlicer. |
 | `ORCA_PROFILES_PATH` | Não | `/app/squashfs-root/resources/profiles` | Diretório dos profiles built-in do OrcaSlicer usados para resolver `inherits`. |
+| `USE_XVFB` | Não | `false` | Quando `true`, executa o OrcaSlicer via `xvfb-run -a` para permitir thumbnails e evitar segfaults em headless sem X11. |
 | `SLICE_TIMEOUT_SECONDS` | Não | `1800` | Timeout máximo de slicing em segundos. |
 | `CORS_ORIGINS` | Não | `*` | Lista de origins separados por vírgula. |
 

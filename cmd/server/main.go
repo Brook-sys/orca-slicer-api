@@ -28,6 +28,7 @@ func main() {
 		OrcaSlicerPath:   cfg.OrcaSlicerPath,
 		OrcaProfilesPath: cfg.OrcaProfilesPath,
 		Timeout:          cfg.SliceTimeout,
+		UseXvfb:          cfg.UseXvfb,
 		State:            slicer.NewStateStore(cfg.DataPath),
 	}
 	sliceHandler := slicer.Handler{Service: sliceService}

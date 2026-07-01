@@ -21,6 +21,7 @@ type Service struct {
 	OrcaSlicerPath   string
 	OrcaProfilesPath string
 	Timeout          time.Duration
+	UseXvfb          bool
 	State            *StateStore
 	mu               sync.Mutex
 }
@@ -92,7 +93,12 @@ func (s *Service) Slice(ctx context.Context, filename string, data []byte, setti
 	}
 	defer cancel()
 
-	cmd := exec.CommandContext(cmdCtx, s.OrcaSlicerPath, args...)
+	exe := s.OrcaSlicerPath
+	if s.UseXvfb {
+		exe = "xvfb-run"
+		args = append([]string{"-a", s.OrcaSlicerPath}, args...)
+	}
+	cmd := exec.CommandContext(cmdCtx, exe, args...)
 	slog.Info("slicing started", "file", filepath.Base(filename), "export_type", settings.ExportType)
 	started := time.Now()
 	output, err := cmd.CombinedOutput()
