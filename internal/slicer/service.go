@@ -21,7 +21,7 @@ type Service struct {
 	OrcaSlicerPath   string
 	OrcaProfilesPath string
 	Timeout          time.Duration
-	UseXvfb          bool
+	GenerateImage    bool
 	State            *StateStore
 	mu               sync.Mutex
 }
@@ -94,20 +94,8 @@ func (s *Service) Slice(ctx context.Context, filename string, data []byte, setti
 	defer cancel()
 
 	exe := s.OrcaSlicerPath
-	if settings.UseXvfb {
-		if _, err := exec.LookPath("xvfb-run"); err != nil {
-			err := httpx.NewError(http.StatusInternalServerError, "useXvfb is enabled but xvfb-run is not installed in the container")
-			s.setFailed(startedAt, err.Error())
-			return Result{}, err
-		}
-		exe = "xvfb-run"
-		args = append([]string{"-a", "--server-args=-screen 0 1024x768x24 +extension GLX +render -noreset", s.OrcaSlicerPath}, args...)
-		debug.Command = exe
-		debug.Args = args
-		slog.Info("using xvfb-run wrapper", "original", s.OrcaSlicerPath)
-	}
 	cmd := exec.CommandContext(cmdCtx, exe, args...)
-	slog.Info("slicing started", "file", filepath.Base(filename), "export_type", settings.ExportType, "use_xvfb", settings.UseXvfb)
+	slog.Info("slicing started", "file", filepath.Base(filename), "export_type", settings.ExportType, "generate_image", settings.GenerateImage)
 	started := time.Now()
 	output, err := cmd.CombinedOutput()
 	debug.Output = strings.TrimSpace(string(output))
@@ -142,12 +130,12 @@ func (s *Service) Slice(ctx context.Context, filename string, data []byte, setti
 		return Result{}, err
 	}
 
-	if settings.Neptune4Thumbnails && settings.ExportType != "3mf" {
+	if settings.GenerateImage && settings.ExportType != "3mf" {
 		for _, file := range files {
 			if err := addNeptune4ThumbnailsToGCode(file, data); err != nil {
 				debug.ErrorMessage = err.Error()
 				s.setFailed(startedAt, err.Error())
-				return Result{}, httpx.NewError(http.StatusInternalServerError, "Neptune 4 thumbnail generation failed: "+err.Error())
+				return Result{}, httpx.NewError(http.StatusInternalServerError, "Image generation failed: "+err.Error())
 			}
 		}
 	}

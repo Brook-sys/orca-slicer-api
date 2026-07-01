@@ -43,7 +43,6 @@ RUN apt-get update \
 	libgtk-3-0 \
 	libgstreamer1.0-0 libgstreamer-plugins-base1.0-0 \
 	libwebkit2gtk-4.1-0 \
-	xvfb \
 	&& update-ca-certificates \
 	&& rm -rf /var/lib/apt/lists/*
 

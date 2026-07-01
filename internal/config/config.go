@@ -13,7 +13,7 @@ type Config struct {
 	OrcaProfilesPath string
 	SliceTimeout     time.Duration
 	CORSOrigins      string
-	UseXvfb          bool
+	GenerateImage    bool
 }
 
 func Load() Config {
@@ -46,6 +46,6 @@ func Load() Config {
 		OrcaProfilesPath: orcaProfilesPath,
 		SliceTimeout:     time.Duration(timeoutSeconds) * time.Second,
 		CORSOrigins:      os.Getenv("CORS_ORIGINS"),
-		UseXvfb:          os.Getenv("USE_XVFB") == "true" || os.Getenv("USE_XVFB") == "1",
+		GenerateImage:    os.Getenv("GENERATE_IMAGE") == "true" || os.Getenv("GENERATE_IMAGE") == "1",
 	}
 }

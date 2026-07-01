@@ -95,7 +95,7 @@ Variáveis de ambiente:
 | `DATA_PATH` | Não | `data` | Diretório base onde os profiles e status são salvos. |
 | `ORCASLICER_PATH` | Sim para slicing | vazio | Caminho absoluto do binário/AppRun do OrcaSlicer. |
 | `ORCA_PROFILES_PATH` | Não | `/app/squashfs-root/resources/profiles` | Diretório dos profiles built-in do OrcaSlicer usados para resolver `inherits`. |
-| `USE_XVFB` | Não | `false` | Quando `true`, executa o OrcaSlicer via `xvfb-run -a` para permitir thumbnails e evitar segfaults em headless sem X11. |
+| `GENERATE_IMAGE` | Não | `false` | Quando `true`, ativa geração de thumbnail PNG 160x160 do modelo STL. Modelo em cor `#22948a` (teal), fundo transparente. |
 | `SLICE_TIMEOUT_SECONDS` | Não | `1800` | Timeout máximo de slicing em segundos. |
 | `CORS_ORIGINS` | Não | `*` | Lista de origins separados por vírgula. |
 
@@ -809,8 +809,7 @@ Multipart fields:
 | `multicolorOnePlate` | bool | Não | Ativa `--allow-multicolor-oneplate`. |
 | `resolveProfiles` | bool | Não | Quando `true`, resolve `inherits`/built-ins para profiles selecionados por nome antes do slicing. Não afeta `printerProfile`, `presetProfile` ou `filamentProfile` enviados como arquivo. |
 | `sanitizeProfiles` | bool | Não | Quando `true`, ajusta campos conhecidos por quebrar o Orca CLI apenas nos profiles temporários: define `from="system"` em todos os profiles e remove `small_perimeter_speed` em presets. |
-| `useXvfb` | bool | Não | Quando `true`, executa o OrcaSlicer via `xvfb-run -a --server-args='-screen 0 1024x768x24 +extension GLX +render -noreset'`. Ajuda em ambiente headless e pode permitir thumbnails se o Orca CLI/renderizador suportar no modo atual. |
-| `neptune4Thumbnails` | bool | Não | Quando `true`, pós-processa G-code gerado de STL e injeta thumbnails COLPIC `320x320`/`160x160` compatíveis com Elegoo Neptune 4 usando encoder portado do OrcaSlicer. |
+| `generateImage` | bool | Não | Quando `true`, gera thumbnail PNG 160x160 do modelo STL e injeta no G-code. Modelo em cor `#22948a` (teal), fundo transparente. |
 | `overrides` | string JSON | Não | JSON com overrides por `printer`, `preset`, `filament`. |
 
 Exemplo básico usando profiles salvos por nome:
@@ -914,31 +913,15 @@ curl -X POST http://localhost:3000/slice \
   -F filament=PLA_personalizado1_ONP \
   -F resolveProfiles=true \
   -F sanitizeProfiles=true \
-  -F useXvfb=true \
+  -F generateImage=true \
   -o result.gcode
 ```
 
-Observação sobre thumbnails: `useXvfb=true` garante que o Orca rode sob um display virtual, mas a geração de thumbnail embutida ainda depende do comportamento interno do OrcaSlicer CLI. Em alguns cenários o G-code pode conter apenas os campos `thumbnails`/`thumbnails_format` sem bloco `thumbnail begin`/`thumbnail end`.
-
-Para Elegoo Neptune 4, use `neptune4Thumbnails=true` para injetar thumbnails no formato esperado pelo profile oficial:
-
-```bash
-curl -X POST http://localhost:3000/slice \
-  -F file=@model.stl \
-  -F printer=Elegoo_Neptune_4_0_4_nozzle_-OpenNept4une \
-  -F preset=0_2mm_standard_0_4_ONP \
-  -F filament=PLA_personalizado1_ONP \
-  -F resolveProfiles=true \
-  -F sanitizeProfiles=true \
-  -F neptune4Thumbnails=true \
-  -o result.gcode
-```
-
-O pós-processador injeta `;gimage:` e `;simage:` em COLPIC. Atualmente ele usa o STL enviado como fonte do preview, então não se aplica a STEP/3MF.
-
-A thumbnail PNG gerada usa:
+O parâmetro `generateImage=true` ativa a geração de thumbnail PNG 160x160 no formato esperado pelo Elegoo Neptune 4. A thumbnail usa:
 - Cor do modelo: `#22948a` (teal) com sombreamento
 - Fundo: transparente (alpha=0)
+
+A thumbnail só é gerada para export `gcode` e quando o modelo é STL. Não se aplica a STEP/3MF.
 
 Exemplo com overrides:
 

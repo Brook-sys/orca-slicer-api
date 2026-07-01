@@ -200,11 +200,11 @@ func TestResolveProfileUsesCustomAlias(t *testing.T) {
 
 func TestEnsureCompatibleProfileAddsPrinterNames(t *testing.T) {
 	profile := map[string]any{
-		"compatible_printers": []any{"Base Printer"},
+		"compatible_printers":           []any{"Base Printer"},
 		"compatible_printers_condition": "some condition",
 	}
 	printer := map[string]any{
-		"name": "Custom Printer",
+		"name":                "Custom Printer",
 		"printer_settings_id": "Custom Printer Settings",
 	}
 
