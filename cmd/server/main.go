@@ -84,6 +84,9 @@ func main() {
 			if sliceService.ResultCache != nil {
 				sliceService.ResultCache.Cleanup()
 			}
+			if jobStore != nil {
+				jobStore.Cleanup(24 * time.Hour)
+			}
 		}
 	}()
 

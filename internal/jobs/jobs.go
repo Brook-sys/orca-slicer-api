@@ -199,3 +199,17 @@ func (s *Store) loadFromDisk() {
 		s.jobs[job.ID] = &job
 	}
 }
+
+func (s *Store) Cleanup(maxAge time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cutoff := time.Now().Add(-maxAge)
+	for id, job := range s.jobs {
+		if (job.Status == StatusCompleted || job.Status == StatusFailed) && job.UpdatedAt.Before(cutoff) {
+			if s.baseDir != "" {
+				_ = os.Remove(filepath.Join(s.baseDir, id+".json"))
+			}
+			delete(s.jobs, id)
+		}
+	}
+}
