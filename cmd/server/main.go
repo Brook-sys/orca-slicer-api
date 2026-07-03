@@ -71,6 +71,7 @@ func main() {
 	mux.HandleFunc("GET /jobs/{id}", jobHandler.GetJob)
 	mux.HandleFunc("GET /jobs/{id}/download", jobHandler.DownloadJob)
 	mux.HandleFunc("DELETE /jobs/{id}", jobHandler.CancelJob)
+	mux.HandleFunc("GET /profiles/builtins/{category}", sliceHandler.ListBuiltinProfiles)
 
 	handler := httpx.Middleware(cfg.CORSOrigins, mux)
 

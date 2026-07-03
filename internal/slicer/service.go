@@ -1,6 +1,8 @@
 package slicer
 
 import (
+	"bufio"
+	"github.com/Brook-sys/orca-slicer-api/internal/jobs"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -26,15 +28,35 @@ type Service struct {
 	SanitizeProfiles bool
 	State            *StateStore
 	mu               sync.Mutex
+	JobStore         *jobs.Store
+	ResultCache      *ResultCache
+	CacheTTL         time.Duration
 }
 
 func (s *Service) Slice(ctx context.Context, filename string, data []byte, settings Settings) (Result, error) {
+	return s.sliceInternal(ctx, "", filename, data, settings)
+}
+
+func (s *Service) SliceAsync(ctx context.Context, jobID string, filename string, data []byte, settings Settings) (Result, error) {
+	return s.sliceInternal(ctx, jobID, filename, data, settings)
+}
+
+func (s *Service) sliceInternal(ctx context.Context, jobID string, filename string, data []byte, settings Settings) (Result, error) {
 	if !s.mu.TryLock() {
 		return Result{}, httpx.NewError(http.StatusConflict, "Slicer is busy")
 	}
 	defer s.mu.Unlock()
 
 	startedAt := nowString()
+
+	// Check cache first
+	if s.ResultCache != nil {
+		key := s.ResultCache.makeKey(filename, data, settings)
+		if entry, ok := s.ResultCache.Get(key); ok {
+			return Result{Files: entry.Files, Workdir: entry.Workdir}, nil
+		}
+	}
+
 	if s.State != nil {
 		_ = s.State.Set(JobState{Status: StatusProcessing, StartedAt: startedAt})
 	}
@@ -93,6 +115,9 @@ func (s *Service) Slice(ctx context.Context, filename string, data []byte, setti
 	if s.Timeout > 0 {
 		cmdCtx, cancel = context.WithTimeout(ctx, s.Timeout)
 	}
+	if jobID != "" && s.JobStore != nil {
+		s.JobStore.SetCancelFunc(jobID, cancel)
+	}
 	defer cancel()
 
 	exe := s.OrcaSlicerPath
@@ -110,8 +135,42 @@ func (s *Service) Slice(ctx context.Context, filename string, data []byte, setti
 		"orient", settings.Orient,
 	)
 	started := time.Now()
-	output, err := cmd.CombinedOutput()
-	debug.Output = strings.TrimSpace(string(output))
+
+	stdout, _ := cmd.StdoutPipe()
+	stderr, _ := cmd.StderrPipe()
+
+	if err := cmd.Start(); err != nil {
+		debug.ErrorMessage = err.Error()
+		s.setFailed(startedAt, err.Error())
+		return Result{}, httpx.NewError(http.StatusInternalServerError, "Failed to start slicer: "+err.Error())
+	}
+
+	var outputBuilder strings.Builder
+
+	go func() {
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			line := scanner.Text()
+			outputBuilder.WriteString(line + "\n")
+			if jobID != "" && s.JobStore != nil {
+				if progress, ok := jobs.ExtractProgress(line); ok {
+					s.JobStore.UpdateProgress(jobID, progress)
+				}
+			}
+		}
+	}()
+
+	go func() {
+		scanner := bufio.NewScanner(stderr)
+		for scanner.Scan() {
+			line := scanner.Text()
+			outputBuilder.WriteString(line + "\n")
+		}
+	}()
+
+	err = cmd.Wait()
+	debug.Output = strings.TrimSpace(outputBuilder.String())
+
 	if err != nil {
 		if cmdCtx.Err() != nil {
 			debug.ErrorMessage = cmdCtx.Err().Error()
@@ -124,7 +183,7 @@ func (s *Service) Slice(ctx context.Context, filename string, data []byte, setti
 			s.setFailed(startedAt, slicerError)
 			return Result{}, httpx.NewError(http.StatusInternalServerError, "Slicing failed: "+slicerError)
 		}
-		message := strings.TrimSpace(string(output))
+		message := debug.Output
 		debug.ErrorMessage = message
 		s.setFailed(startedAt, message)
 		return Result{}, httpx.NewError(http.StatusInternalServerError, "Slicing failed: "+message)
