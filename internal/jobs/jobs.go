@@ -200,6 +200,23 @@ func (s *Store) loadFromDisk() {
 	}
 }
 
+func (s *Store) Stats() map[string]int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	stats := map[string]int{
+		"total":     len(s.jobs),
+		"pending":   0,
+		"slicing":   0,
+		"completed": 0,
+		"failed":    0,
+	}
+	for _, job := range s.jobs {
+		stats[string(job.Status)]++
+	}
+	return stats
+}
+
 func (s *Store) Cleanup(maxAge time.Duration) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

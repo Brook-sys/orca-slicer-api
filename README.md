@@ -39,10 +39,15 @@ http://localhost:3000/openapi.json
 | Endpoint | Descrição |
 |----------|-----------|
 | `GET /health` | Healthcheck |
-| `POST /slice` | Executa slicing |
+| `POST /slice` | Executa slicing síncrono |
+| `POST /slice/async` | Executa slicing assíncrono (retorna ID de job) |
+| `GET /jobs` | Lista todos os jobs de slicing |
+| `GET /jobs/{id}` | Status de um job em andamento |
+| `GET /jobs/{id}/download` | Download de G-code de um job concluído |
 | `POST /slice/preview` | Preview com thumbnail e detecção de suporte |
 | `GET /slice/status` | Status do último slicing |
 | `GET /slice/debug` | Debug do último slicing |
+| `GET /profiles/builtins/{category}` | Lista profiles embutidos no OrcaSlicer |
 | `GET /profiles/{category}` | Lista profiles |
 | `POST /profiles/{category}/upload` | Upload de profile |
 | `POST /profiles/{category}/import-url` | Importa profile por URL |

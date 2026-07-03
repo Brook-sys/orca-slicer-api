@@ -11,6 +11,7 @@ import (
 	"github.com/Brook-sys/orca-slicer-api/internal/health"
 	"github.com/Brook-sys/orca-slicer-api/internal/httpx"
 	"github.com/Brook-sys/orca-slicer-api/internal/jobs"
+	"github.com/Brook-sys/orca-slicer-api/internal/metrics"
 	"github.com/Brook-sys/orca-slicer-api/internal/profiles"
 	"github.com/Brook-sys/orca-slicer-api/internal/slicer"
 )
@@ -49,11 +50,13 @@ func main() {
 
 	sliceHandler := slicer.Handler{Service: sliceService, JobStore: jobStore}
 	jobHandler := jobs.Handler{Store: jobStore}
+	metricsHandler := metrics.Handler{JobStore: jobStore, Cache: sliceService.ResultCache, Startup: time.Now()}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /openapi.json", docs.OpenAPIHandler)
 	mux.HandleFunc("GET /api-docs", docs.SwaggerUIHandler)
 	mux.HandleFunc("GET /health", healthHandler.Check)
+	mux.HandleFunc("GET /metrics", metricsHandler.GetMetrics)
 	mux.HandleFunc("GET /profiles/{category}", profileHandler.List)
 	mux.HandleFunc("GET /profiles/{category}/{name}", profileHandler.Get)
 	mux.HandleFunc("POST /profiles/{category}/upload", profileHandler.Upload)

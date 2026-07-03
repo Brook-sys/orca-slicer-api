@@ -52,20 +52,28 @@ curl -X POST http://HOST:3000/slice \
   -o result.gcode
 ```
 
-## Slice Assíncrono
+## Slice Assíncrono e Jobs
 
 ```bash
+# Iniciar job
 curl -X POST http://HOST:3000/slice/async \
   -F file=@model.stl \
   -F printer=... \
   -F preset=... \
   -F filament=...
 
-curl http://HOST:3000/jobs/JOB_ID
-curl -OJ http://HOST:3000/jobs/JOB_ID/download
-```
+# Listar todos os jobs
+curl http://HOST:3000/jobs
 
-`GET /jobs/{id}` retorna `status` e `progress`. `DELETE /jobs/{id}` cancela um job em andamento.
+# Acompanhar um job específico
+curl http://HOST:3000/jobs/JOB_ID
+
+# Fazer o download quando status="completed"
+curl -OJ http://HOST:3000/jobs/JOB_ID/download
+
+# Cancelar um job em andamento
+curl -X DELETE http://HOST:3000/jobs/JOB_ID
+```
 
 ## Multi-modelos
 
