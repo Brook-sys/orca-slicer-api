@@ -218,6 +218,60 @@ const OpenAPI = `{
         "responses": { "200": { "description": "Debug do último slicing", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SliceDebug" } } } } }
       }
     },
+    "/slice/async": {
+      "post": {
+        "tags": ["Slice"],
+        "summary": "Inicia slicing assíncrono com suporte a múltiplos arquivos",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": { "type": "string", "format": "binary" },
+                  "files": { "type": "array", "items": { "type": "string", "format": "binary" } },
+                  "printer": { "type": "string" },
+                  "preset": { "type": "string" },
+                  "filament": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": { "202": { "description": "Job criado", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Job" } } } } }
+      }
+    },
+    "/profiles/builtins/{category}": {
+      "get": {
+        "tags": ["Profiles"],
+        "summary": "Lista profiles built-in do OrcaSlicer",
+        "parameters": [{ "$ref": "#/components/parameters/Category" }],
+        "responses": { "200": { "description": "Builtins", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/BuiltinProfile" } } } } } }
+      }
+    },
+    "/jobs/{id}": {
+      "get": {
+        "tags": ["Jobs"],
+        "summary": "Consulta status de um job assíncrono",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Job", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Job" } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
+      },
+      "delete": {
+        "tags": ["Jobs"],
+        "summary": "Cancela job em execução",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "204": { "description": "Cancelled" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/jobs/{id}/download": {
+      "get": {
+        "tags": ["Jobs"],
+        "summary": "Download do resultado quando status=completed",
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Arquivo" }, "400": { "description": "Não pronto" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
     "/slice/resolve-profiles": {
       "post": {
         "tags": ["Resolve"],
@@ -438,6 +492,24 @@ const OpenAPI = `{
           "filamentUsedG": { "type": "number" },
           "filamentUsedMm": { "type": "number" },
           "thumbnail": { "type": "string", "description": "PNG 160x160 em base64" }
+        }
+      },
+      "Job": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "status": { "type": "string", "enum": ["pending", "slicing", "completed", "failed"] },
+          "progress": { "type": "integer" },
+          "error": { "type": "string" },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "BuiltinProfile": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "path": { "type": "string" }
         }
       }
     }
