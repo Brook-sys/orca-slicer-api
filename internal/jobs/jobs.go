@@ -4,7 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -32,23 +35,35 @@ type Job struct {
 }
 
 type Store struct {
-	mu   sync.RWMutex
-	jobs map[string]*Job
+	mu      sync.RWMutex
+	jobs    map[string]*Job
+	baseDir string
 }
 
 func NewStore() *Store {
 	return &Store{jobs: make(map[string]*Job)}
 }
 
-func (s *Store) Create() (*Job, error) {
+func NewPersistentStore(baseDir string) *Store {
+	s := NewStore()
+	s.baseDir = baseDir
+	_ = os.MkdirAll(baseDir, 0o755)
+	s.loadFromDisk()
+	return s
+}
+
+func randomID() string {
 	bytes := make([]byte, 8)
 	if _, err := rand.Read(bytes); err != nil {
-		return nil, err
+		return hex.EncodeToString([]byte(time.Now().Format("20060102150405")))
 	}
+	return hex.EncodeToString(bytes)
+}
 
+func (s *Store) Create() (*Job, error) {
 	now := time.Now()
 	job := &Job{
-		ID:        hex.EncodeToString(bytes),
+		ID:        randomID(),
 		Status:    StatusPending,
 		Progress:  0,
 		CreatedAt: now,
@@ -59,6 +74,7 @@ func (s *Store) Create() (*Job, error) {
 	s.jobs[job.ID] = job
 	s.mu.Unlock()
 
+	s.persist(job)
 	return job, nil
 }
 
@@ -86,6 +102,7 @@ func (s *Store) UpdateStatus(id string, status Status, err error) {
 		if err != nil {
 			job.Error = err.Error()
 		}
+		s.persist(job)
 	}
 }
 
@@ -107,6 +124,7 @@ func (s *Store) UpdateProgress(id string, progress int) {
 			job.Status = StatusSlicing
 		}
 		job.UpdatedAt = time.Now()
+		s.persist(job)
 	}
 }
 
@@ -117,6 +135,7 @@ func (s *Store) SetResult(id string, files []string, workdir string) {
 		job.ResultFiles = append([]string(nil), files...)
 		job.Workdir = workdir
 		job.UpdatedAt = time.Now()
+		s.persist(job)
 	}
 }
 
@@ -140,4 +159,43 @@ func (s *Store) Cancel(id string) error {
 		s.UpdateStatus(id, StatusFailed, fmt.Errorf("job cancelled by user"))
 	}
 	return nil
+}
+
+func (s *Store) persist(job *Job) {
+	if s.baseDir == "" {
+		return
+	}
+	data, err := json.Marshal(job)
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(filepath.Join(s.baseDir, job.ID+".json"), data, 0o644)
+}
+
+func (s *Store) loadFromDisk() {
+	if s.baseDir == "" {
+		return
+	}
+	entries, err := os.ReadDir(s.baseDir)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(s.baseDir, entry.Name()))
+		if err != nil {
+			continue
+		}
+		var job Job
+		if err := json.Unmarshal(data, &job); err != nil {
+			continue
+		}
+		if job.Status != StatusCompleted && job.Status != StatusFailed {
+			job.Status = StatusFailed
+			job.Error = "job lost after restart"
+		}
+		s.jobs[job.ID] = &job
+	}
 }

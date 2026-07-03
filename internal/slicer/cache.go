@@ -142,6 +142,19 @@ func (c *ResultCache) oldestKey() string {
 	return oldest
 }
 
+func (c *ResultCache) Cleanup() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for key, entry := range c.entries {
+		if time.Since(entry.CreatedAt) > c.ttl {
+			if c.baseDir != "" {
+				_ = os.RemoveAll(entry.Workdir)
+			}
+			delete(c.entries, key)
+		}
+	}
+}
+
 func (c *ResultCache) copyFiles(key string, files []string) ([]string, string, error) {
 	workdir := filepath.Join(c.baseDir, key)
 	if err := os.RemoveAll(workdir); err != nil {

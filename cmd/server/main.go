@@ -44,7 +44,7 @@ func main() {
 		State:            slicer.NewStateStore(cfg.DataPath),
 		ResultCache:      slicer.NewPersistentResultCache(time.Hour, 100, cfg.DataPath+"/cache"),
 	}
-	jobStore := jobs.NewStore()
+	jobStore := jobs.NewPersistentStore(cfg.DataPath + "/jobs")
 	sliceService.JobStore = jobStore
 
 	sliceHandler := slicer.Handler{Service: sliceService, JobStore: jobStore}
@@ -76,6 +76,16 @@ func main() {
 	mux.HandleFunc("GET /profiles/builtins/{category}", sliceHandler.ListBuiltinProfiles)
 
 	handler := httpx.Middleware(cfg.CORSOrigins, mux)
+
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			if sliceService.ResultCache != nil {
+				sliceService.ResultCache.Cleanup()
+			}
+		}
+	}()
 
 	slog.Info("server listening", "port", cfg.Port, "generate_image", cfg.GenerateImage)
 	if err := http.ListenAndServe(":"+cfg.Port, handler); err != nil {
