@@ -84,6 +84,7 @@ func main() {
 		for range ticker.C {
 			if sliceService.ResultCache != nil {
 				sliceService.ResultCache.Cleanup()
+				sliceService.ResultCache.EvictOldFiles()
 			}
 			if jobStore != nil {
 				jobStore.Cleanup(24 * time.Hour)

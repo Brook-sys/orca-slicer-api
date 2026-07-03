@@ -142,6 +142,25 @@ func (c *ResultCache) oldestKey() string {
 	return oldest
 }
 
+func (c *ResultCache) EvictOldFiles() {
+	if c.baseDir == "" {
+		return
+	}
+	entries, err := os.ReadDir(c.baseDir)
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-c.ttl)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			info, err := entry.Info()
+			if err == nil && info.ModTime().Before(cutoff) {
+				_ = os.RemoveAll(filepath.Join(c.baseDir, entry.Name()))
+			}
+		}
+	}
+}
+
 func (c *ResultCache) Cleanup() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
