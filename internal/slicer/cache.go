@@ -4,6 +4,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"hash"
+	"io"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -20,6 +23,7 @@ type ResultCache struct {
 	entries map[string]CacheEntry
 	ttl     time.Duration
 	max     int
+	baseDir string
 }
 
 func NewResultCache(ttl time.Duration, maxEntries int) *ResultCache {
@@ -28,6 +32,12 @@ func NewResultCache(ttl time.Duration, maxEntries int) *ResultCache {
 		ttl:     ttl,
 		max:     maxEntries,
 	}
+}
+
+func NewPersistentResultCache(ttl time.Duration, maxEntries int, baseDir string) *ResultCache {
+	cache := NewResultCache(ttl, maxEntries)
+	cache.baseDir = baseDir
+	return cache
 }
 
 func (c *ResultCache) makeModelsKey(models []ModelInput, settings Settings) string {
@@ -72,39 +82,99 @@ func (c *ResultCache) makeSettingsKey(h hash.Hash, settings Settings) string {
 func (c *ResultCache) Get(key string) (CacheEntry, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	e, ok := c.entries[key]
+
+	entry, ok := c.entries[key]
 	if !ok {
 		return CacheEntry{}, false
 	}
-	if time.Since(e.CreatedAt) > c.ttl {
+	if time.Since(entry.CreatedAt) > c.ttl {
 		return CacheEntry{}, false
 	}
-	return e, true
+	for _, file := range entry.Files {
+		if _, err := os.Stat(file); err != nil {
+			return CacheEntry{}, false
+		}
+	}
+	return entry, true
 }
 
 func (c *ResultCache) Put(key string, files []string, workdir string) {
+	storedFiles := append([]string(nil), files...)
+	storedWorkdir := workdir
+	if c.baseDir != "" {
+		cachedFiles, cachedWorkdir, err := c.copyFiles(key, files)
+		if err == nil {
+			storedFiles = cachedFiles
+			storedWorkdir = cachedWorkdir
+		}
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if len(c.entries) >= c.max {
-		// Evict oldest
-		var oldest string
-		var oldestTime time.Time
-		for k, v := range c.entries {
-			if oldest == "" || v.CreatedAt.Before(oldestTime) {
-				oldest = k
-				oldestTime = v.CreatedAt
-			}
-		}
+		oldest := c.oldestKey()
 		if oldest != "" {
+			if old := c.entries[oldest]; c.baseDir != "" {
+				_ = os.RemoveAll(old.Workdir)
+			}
 			delete(c.entries, oldest)
 		}
 	}
 
 	c.entries[key] = CacheEntry{
 		Key:       key,
-		Files:     append([]string(nil), files...),
-		Workdir:   workdir,
+		Files:     storedFiles,
+		Workdir:   storedWorkdir,
 		CreatedAt: time.Now(),
 	}
+}
+
+func (c *ResultCache) oldestKey() string {
+	oldest := ""
+	var oldestTime time.Time
+	for key, entry := range c.entries {
+		if oldest == "" || entry.CreatedAt.Before(oldestTime) {
+			oldest = key
+			oldestTime = entry.CreatedAt
+		}
+	}
+	return oldest
+}
+
+func (c *ResultCache) copyFiles(key string, files []string) ([]string, string, error) {
+	workdir := filepath.Join(c.baseDir, key)
+	if err := os.RemoveAll(workdir); err != nil {
+		return nil, "", err
+	}
+	if err := os.MkdirAll(workdir, 0o755); err != nil {
+		return nil, "", err
+	}
+
+	cachedFiles := make([]string, 0, len(files))
+	for _, src := range files {
+		dst := filepath.Join(workdir, filepath.Base(src))
+		if err := copyFile(dst, src); err != nil {
+			return nil, "", err
+		}
+		cachedFiles = append(cachedFiles, dst)
+	}
+	return cachedFiles, workdir, nil
+}
+
+func copyFile(dst string, src string) error {
+	input, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer input.Close()
+
+	output, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer output.Close()
+
+	_, err = io.Copy(output, input)
+	return err
 }

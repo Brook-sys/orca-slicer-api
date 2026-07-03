@@ -42,7 +42,7 @@ func main() {
 		ResolveProfiles:  cfg.ResolveProfiles,
 		SanitizeProfiles: cfg.SanitizeProfiles,
 		State:            slicer.NewStateStore(cfg.DataPath),
-		ResultCache:      slicer.NewResultCache(time.Hour, 100),
+		ResultCache:      slicer.NewPersistentResultCache(time.Hour, 100, cfg.DataPath+"/cache"),
 	}
 	jobStore := jobs.NewStore()
 	sliceService.JobStore = jobStore

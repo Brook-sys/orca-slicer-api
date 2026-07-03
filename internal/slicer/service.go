@@ -6,6 +6,8 @@ import (
 
 	"encoding/json"
 	"fmt"
+	"io"
+
 	"github.com/Brook-sys/orca-slicer-api/internal/jobs"
 	"log/slog"
 	"net/http"
@@ -163,29 +165,30 @@ func (s *Service) sliceInternal(ctx context.Context, jobID string, models []Mode
 	}
 
 	var outputBuilder strings.Builder
-
-	go func() {
-		scanner := bufio.NewScanner(stdout)
+	var outputMu sync.Mutex
+	var outputWG sync.WaitGroup
+	readOutput := func(pipe io.Reader, trackProgress bool) {
+		defer outputWG.Done()
+		scanner := bufio.NewScanner(pipe)
 		for scanner.Scan() {
 			line := scanner.Text()
+			outputMu.Lock()
 			outputBuilder.WriteString(line + "\n")
-			if jobID != "" && s.JobStore != nil {
+			outputMu.Unlock()
+			if trackProgress && jobID != "" && s.JobStore != nil {
 				if progress, ok := jobs.ExtractProgress(line); ok {
 					s.JobStore.UpdateProgress(jobID, progress)
 				}
 			}
 		}
-	}()
+	}
 
-	go func() {
-		scanner := bufio.NewScanner(stderr)
-		for scanner.Scan() {
-			line := scanner.Text()
-			outputBuilder.WriteString(line + "\n")
-		}
-	}()
+	outputWG.Add(2)
+	go readOutput(stdout, true)
+	go readOutput(stderr, true)
 
 	err = cmd.Wait()
+	outputWG.Wait()
 	debug.Output = strings.TrimSpace(outputBuilder.String())
 
 	if err != nil {

@@ -52,6 +52,45 @@ curl -X POST http://HOST:3000/slice \
   -o result.gcode
 ```
 
+## Slice Assíncrono
+
+```bash
+curl -X POST http://HOST:3000/slice/async \
+  -F file=@model.stl \
+  -F printer=... \
+  -F preset=... \
+  -F filament=...
+
+curl http://HOST:3000/jobs/JOB_ID
+curl -OJ http://HOST:3000/jobs/JOB_ID/download
+```
+
+`GET /jobs/{id}` retorna `status` e `progress`. `DELETE /jobs/{id}` cancela um job em andamento.
+
+## Multi-modelos
+
+`POST /slice` e `POST /slice/async` continuam aceitando `file=@model.stl`. Para vários modelos, envie múltiplos campos `files`:
+
+```bash
+curl -X POST http://HOST:3000/slice \
+  -F files=@part-a.stl \
+  -F files=@part-b.stl \
+  -F arrange=true \
+  -o result.gcode
+```
+
+## Profiles Built-in
+
+```bash
+curl http://HOST:3000/profiles/builtins/printers
+curl http://HOST:3000/profiles/builtins/presets
+curl http://HOST:3000/profiles/builtins/filaments
+```
+
+## Cache de Resultado
+
+Requests idênticos usam cache em memória com cópia persistida em `DATA_PATH/cache`, evitando apontar para workdirs temporários removidos.
+
 ## Variáveis Importantes
 
 | Variável | Valor recomendado |

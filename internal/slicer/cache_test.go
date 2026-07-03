@@ -31,17 +31,51 @@ func TestBuildArgsForInputsPassesAllModels(t *testing.T) {
 	}
 }
 
+func TestPersistentResultCacheCopiesResultFiles(t *testing.T) {
+	cacheDir := filepath.Join(t.TempDir(), "cache")
+	workdir := t.TempDir()
+	resultPath := filepath.Join(workdir, "result.gcode")
+	if err := os.WriteFile(resultPath, []byte("G28"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cache := NewPersistentResultCache(time.Hour, 10, cacheDir)
+	models := []ModelInput{{Filename: "a.stl", Data: []byte("solid a")}}
+	key := cache.makeModelsKey(models, Settings{})
+	cache.Put(key, []string{resultPath}, workdir)
+
+	if err := os.RemoveAll(workdir); err != nil {
+		t.Fatal(err)
+	}
+
+	entry, ok := cache.Get(key)
+	if !ok {
+		t.Fatalf("expected persistent cache hit")
+	}
+	if entry.Workdir == workdir {
+		t.Fatalf("expected cache workdir to be copied")
+	}
+	if _, err := os.Stat(entry.Files[0]); err != nil {
+		t.Fatalf("expected cached file to exist: %v", err)
+	}
+}
+
 func TestResultCacheUsesModelsAndSettings(t *testing.T) {
 	cache := NewResultCache(time.Hour, 10)
+	workdir := t.TempDir()
+	resultPath := filepath.Join(workdir, "result.gcode")
+	if err := os.WriteFile(resultPath, []byte("G28"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	models := []ModelInput{{Filename: "a.stl", Data: []byte("solid a")}}
 	key := cache.makeModelsKey(models, Settings{ExportType: "gcode"})
-	cache.Put(key, []string{"/tmp/result.gcode"}, "/tmp/work")
+	cache.Put(key, []string{resultPath}, workdir)
 
 	entry, ok := cache.Get(key)
 	if !ok {
 		t.Fatalf("expected cache hit")
 	}
-	if entry.Files[0] != "/tmp/result.gcode" || entry.Workdir != "/tmp/work" {
+	if entry.Files[0] != resultPath || entry.Workdir != workdir {
 		t.Fatalf("unexpected cache entry %#v", entry)
 	}
 
