@@ -121,7 +121,7 @@ docker exec orca-slicer-api test -x /app/squashfs-root/AppRun
 
 ## Quando algo falhar
 
-1. Verificar `/health`
+1. Verificar `/health` e `/metrics`
 2. Verificar `/slice/debug`
 3. Verificar logs do container
 4. Testar com `resolveProfiles=true`
