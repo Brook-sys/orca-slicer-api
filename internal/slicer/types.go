@@ -1,5 +1,10 @@
 package slicer
 
+type ModelInput struct {
+	Filename string
+	Data     []byte
+}
+
 type Settings struct {
 	Printer               string                    `json:"printer"`
 	Preset                string                    `json:"preset"`

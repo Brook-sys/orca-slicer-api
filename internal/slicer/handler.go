@@ -1,6 +1,7 @@
 package slicer
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -136,8 +137,7 @@ func (h Handler) Slice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var allData [][]byte
-	var filenames []string
+	models := make([]ModelInput, 0, len(files))
 	for _, fh := range files {
 		if !validModelFile(fh.Filename) {
 			httpx.WriteError(w, httpx.NewError(http.StatusBadRequest, "Invalid file type. Only STL, STEP and 3MF files are allowed"))
@@ -158,8 +158,7 @@ func (h Handler) Slice(w http.ResponseWriter, r *http.Request) {
 			httpx.WriteError(w, httpx.NewError(http.StatusBadRequest, "Model file is too large"))
 			return
 		}
-		allData = append(allData, data)
-		filenames = append(filenames, fh.Filename)
+		models = append(models, ModelInput{Filename: fh.Filename, Data: data})
 	}
 
 	settings, err := parseSettings(r, serviceGenerateImage(h.Service), serviceResolveProfiles(h.Service), serviceSanitizeProfiles(h.Service))
@@ -172,10 +171,7 @@ func (h Handler) Slice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If multiple files, we merge them into one temp file using --arrange (Orca CLI behavior)
-	// For simplicity we keep the first filename but we send all files concatenated in memory
-	// (real multi-plate would require writing all to disk). We keep single-file path for now.
-	result, err := h.Service.Slice(r.Context(), filenames[0], allData[0], settings)
+	result, err := h.Service.SliceModels(r.Context(), models, settings)
 	if err != nil {
 		httpx.WriteError(w, err)
 		return
@@ -194,25 +190,9 @@ func (h Handler) SliceAsync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		httpx.WriteError(w, httpx.NewError(http.StatusBadRequest, "Model file is required"))
-		return
-	}
-	defer file.Close()
-
-	if !validModelFile(header.Filename) {
-		httpx.WriteError(w, httpx.NewError(http.StatusBadRequest, "Invalid file type. Only STL, STEP and 3MF files are allowed"))
-		return
-	}
-
-	data, err := io.ReadAll(io.LimitReader(file, maxModelSize+1))
+	models, err := modelsFromMultipart(r)
 	if err != nil {
 		httpx.WriteError(w, err)
-		return
-	}
-	if len(data) > maxModelSize {
-		httpx.WriteError(w, httpx.NewError(http.StatusBadRequest, "Model file is too large"))
 		return
 	}
 
@@ -233,7 +213,7 @@ func (h Handler) SliceAsync(w http.ResponseWriter, r *http.Request) {
 	}
 
 	go func() {
-		result, err := h.Service.SliceAsync(r.Context(), job.ID, header.Filename, data, settings)
+		result, err := h.Service.SliceModelsAsync(context.Background(), job.ID, models, settings)
 		if err != nil {
 			h.JobStore.UpdateStatus(job.ID, jobs.StatusFailed, err)
 			return
@@ -394,6 +374,40 @@ func readJSONProfileParts(r *http.Request, field string) ([]map[string]any, erro
 		profiles = append(profiles, profile)
 	}
 	return profiles, nil
+}
+
+func modelsFromMultipart(r *http.Request) ([]ModelInput, error) {
+	files := r.MultipartForm.File["files"]
+	if len(files) == 0 {
+		files = r.MultipartForm.File["file"]
+	}
+	if len(files) == 0 {
+		return nil, httpx.NewError(http.StatusBadRequest, "Model file is required")
+	}
+
+	models := make([]ModelInput, 0, len(files))
+	for _, header := range files {
+		if !validModelFile(header.Filename) {
+			return nil, httpx.NewError(http.StatusBadRequest, "Invalid file type. Only STL, STEP and 3MF files are allowed")
+		}
+		file, err := header.Open()
+		if err != nil {
+			return nil, err
+		}
+		data, readErr := io.ReadAll(io.LimitReader(file, maxModelSize+1))
+		closeErr := file.Close()
+		if readErr != nil {
+			return nil, readErr
+		}
+		if closeErr != nil {
+			return nil, closeErr
+		}
+		if len(data) > maxModelSize {
+			return nil, httpx.NewError(http.StatusBadRequest, "Model file is too large")
+		}
+		models = append(models, ModelInput{Filename: header.Filename, Data: data})
+	}
+	return models, nil
 }
 
 func validModelFile(name string) bool {

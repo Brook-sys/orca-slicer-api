@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/Brook-sys/orca-slicer-api/internal/config"
 	"github.com/Brook-sys/orca-slicer-api/internal/docs"
@@ -41,6 +42,7 @@ func main() {
 		ResolveProfiles:  cfg.ResolveProfiles,
 		SanitizeProfiles: cfg.SanitizeProfiles,
 		State:            slicer.NewStateStore(cfg.DataPath),
+		ResultCache:      slicer.NewResultCache(time.Hour, 100),
 	}
 	jobStore := jobs.NewStore()
 	sliceService.JobStore = jobStore

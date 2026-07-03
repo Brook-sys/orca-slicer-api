@@ -2,10 +2,11 @@ package slicer
 
 import (
 	"bufio"
-	"github.com/Brook-sys/orca-slicer-api/internal/jobs"
 	"context"
+
 	"encoding/json"
 	"fmt"
+	"github.com/Brook-sys/orca-slicer-api/internal/jobs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -34,26 +35,37 @@ type Service struct {
 }
 
 func (s *Service) Slice(ctx context.Context, filename string, data []byte, settings Settings) (Result, error) {
-	return s.sliceInternal(ctx, "", filename, data, settings)
+	return s.SliceModels(ctx, []ModelInput{{Filename: filename, Data: data}}, settings)
 }
 
 func (s *Service) SliceAsync(ctx context.Context, jobID string, filename string, data []byte, settings Settings) (Result, error) {
-	return s.sliceInternal(ctx, jobID, filename, data, settings)
+	return s.SliceModelsAsync(ctx, jobID, []ModelInput{{Filename: filename, Data: data}}, settings)
 }
 
-func (s *Service) sliceInternal(ctx context.Context, jobID string, filename string, data []byte, settings Settings) (Result, error) {
+func (s *Service) SliceModels(ctx context.Context, models []ModelInput, settings Settings) (Result, error) {
+	return s.sliceInternal(ctx, "", models, settings)
+}
+
+func (s *Service) SliceModelsAsync(ctx context.Context, jobID string, models []ModelInput, settings Settings) (Result, error) {
+	return s.sliceInternal(ctx, jobID, models, settings)
+}
+
+func (s *Service) sliceInternal(ctx context.Context, jobID string, models []ModelInput, settings Settings) (Result, error) {
 	if !s.mu.TryLock() {
 		return Result{}, httpx.NewError(http.StatusConflict, "Slicer is busy")
 	}
 	defer s.mu.Unlock()
 
 	startedAt := nowString()
+	if len(models) == 0 {
+		return Result{}, httpx.NewError(http.StatusBadRequest, "Model file is required")
+	}
 
-	// Check cache first
+	cacheKey := ""
 	if s.ResultCache != nil {
-		key := s.ResultCache.makeKey(filename, data, settings)
-		if entry, ok := s.ResultCache.Get(key); ok {
-			return Result{Files: entry.Files, Workdir: entry.Workdir}, nil
+		cacheKey = s.ResultCache.makeModelsKey(models, settings)
+		if entry, ok := s.ResultCache.Get(cacheKey); ok {
+			return Result{Files: entry.Files, Workdir: entry.Workdir, Metadata: AggregateMetadata(entry.Files)}, nil
 		}
 	}
 
@@ -84,14 +96,19 @@ func (s *Service) sliceInternal(ctx context.Context, jobID string, filename stri
 		return Result{}, err
 	}
 
-	inputPath := filepath.Join(inputDir, filepath.Base(filename))
-	if err := os.WriteFile(inputPath, data, 0o644); err != nil {
-		s.setFailed(startedAt, err.Error())
-		return Result{}, err
+	inputPaths := make([]string, 0, len(models))
+	for _, model := range models {
+		inputPath := filepath.Join(inputDir, filepath.Base(model.Filename))
+		if err := os.WriteFile(inputPath, model.Data, 0o644); err != nil {
+			s.setFailed(startedAt, err.Error())
+			return Result{}, err
+		}
+		inputPaths = append(inputPaths, inputPath)
 	}
+	inputPath := inputPaths[0]
 
 	debug := SliceDebug{StartedAt: startedAt, Workdir: workdir, InputPath: inputPath, OutputDir: outputDir, Command: s.OrcaSlicerPath, Settings: settings}
-	args, err := s.buildArgs(inputPath, inputDir, outputDir, settings, &debug)
+	args, err := s.buildArgsForInputs(inputPaths, inputDir, outputDir, settings, &debug)
 	debug.Args = args
 	if err != nil {
 		debug.FinishedAt = nowString()
@@ -123,7 +140,7 @@ func (s *Service) sliceInternal(ctx context.Context, jobID string, filename stri
 	exe := s.OrcaSlicerPath
 	cmd := exec.CommandContext(cmdCtx, exe, args...)
 	slog.Info("slicing started",
-		"file", filepath.Base(filename),
+		"file", filepath.Base(models[0].Filename),
 		"export_type", settings.ExportType,
 		"generate_image", settings.GenerateImage,
 		"enable_support", optionalBoolLogValue(settings.EnableSupport),
@@ -204,7 +221,7 @@ func (s *Service) sliceInternal(ctx context.Context, jobID string, filename stri
 
 	if settings.GenerateImage && settings.ExportType != "3mf" {
 		for _, file := range files {
-			if err := addNeptune4ThumbnailsToGCode(file, data); err != nil {
+			if err := addNeptune4ThumbnailsToGCode(file, models[0].Data); err != nil {
 				debug.ErrorMessage = err.Error()
 				s.setFailed(startedAt, err.Error())
 				return Result{}, httpx.NewError(http.StatusInternalServerError, "Image generation failed: "+err.Error())
@@ -214,6 +231,9 @@ func (s *Service) sliceInternal(ctx context.Context, jobID string, filename stri
 
 	metadata := AggregateMetadata(files)
 	result := Result{Files: files, Workdir: workdir, Metadata: metadata}
+	if s.ResultCache != nil && cacheKey != "" {
+		s.ResultCache.Put(cacheKey, files, workdir)
+	}
 	s.setState(JobState{Status: StatusCompleted, StartedAt: startedAt, FinishedAt: nowString(), Files: files, Metadata: metadata})
 	slog.Info("slicing completed", "duration_ms", time.Since(started).Milliseconds(), "files", len(files), "print_time_seconds", metadata.PrintTimeSeconds)
 	return result, nil
@@ -250,6 +270,10 @@ func (s *Service) Preview(ctx context.Context, filename string, data []byte, set
 }
 
 func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, settings Settings, debug *SliceDebug) ([]string, error) {
+	return s.buildArgsForInputs([]string{inputPath}, inputDir, outputDir, settings, debug)
+}
+
+func (s Service) buildArgsForInputs(inputPaths []string, inputDir string, outputDir string, settings Settings, debug *SliceDebug) ([]string, error) {
 	args := make([]string, 0)
 
 	if settings.ExportType == "3mf" {
@@ -391,7 +415,8 @@ func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, 
 		args = append(args, "--allow-multicolor-oneplate")
 	}
 
-	args = append(args, "--allow-newer-file", "--outputdir", outputDir, inputPath)
+	args = append(args, "--allow-newer-file", "--outputdir", outputDir)
+	args = append(args, inputPaths...)
 	return args, nil
 }
 

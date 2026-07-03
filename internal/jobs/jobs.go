@@ -26,7 +26,7 @@ type Job struct {
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
 
-	CancelFunc context.CancelFunc `json:"-"`
+	CancelFunc  context.CancelFunc `json:"-"`
 	ResultFiles []string           `json:"-"`
 	Workdir     string             `json:"-"`
 }
