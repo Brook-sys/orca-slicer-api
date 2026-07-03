@@ -278,19 +278,35 @@ const OpenAPI = `{
         "type": "object",
         "example": {
           "status": "healthy",
+          "dataPath": "/app/data",
           "dataPathExists": true,
           "dataPathWritable": true,
+          "orcaSlicerPath": "/app/squashfs-root/AppRun",
           "orcaSlicerConfigured": true,
           "orcaSlicerExists": true,
-          "orcaSlicerExecutable": true
+          "orcaSlicerExecutable": true,
+          "orcaProfilesPath": "/app/squashfs-root/resources/profiles",
+          "orcaProfilesPathExists": true,
+          "orcaVersion": "2.4.1",
+          "generateImage": true,
+          "resolveProfiles": true,
+          "sanitizeProfiles": true
         },
         "properties": {
           "status": { "type": "string", "enum": ["healthy", "unhealthy"] },
+          "dataPath": { "type": "string" },
           "dataPathExists": { "type": "boolean" },
           "dataPathWritable": { "type": "boolean" },
+          "orcaSlicerPath": { "type": "string" },
           "orcaSlicerConfigured": { "type": "boolean" },
           "orcaSlicerExists": { "type": "boolean" },
-          "orcaSlicerExecutable": { "type": "boolean" }
+          "orcaSlicerExecutable": { "type": "boolean" },
+          "orcaProfilesPath": { "type": "string" },
+          "orcaProfilesPathExists": { "type": "boolean" },
+          "orcaVersion": { "type": "string" },
+          "generateImage": { "type": "boolean" },
+          "resolveProfiles": { "type": "boolean" },
+          "sanitizeProfiles": { "type": "boolean" }
         }
       },
       "Metadata": {

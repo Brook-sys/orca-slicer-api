@@ -9,26 +9,47 @@ import (
 )
 
 type Handler struct {
-	DataPath       string
-	OrcaSlicerPath string
+	DataPath         string
+	OrcaSlicerPath   string
+	OrcaProfilesPath string
+	OrcaVersion      string
+	GenerateImage    bool
+	ResolveProfiles  bool
+	SanitizeProfiles bool
 }
 
 type Response struct {
-	Status               string `json:"status"`
-	DataPathExists       bool   `json:"dataPathExists"`
-	DataPathWritable     bool   `json:"dataPathWritable"`
-	OrcaSlicerConfigured bool   `json:"orcaSlicerConfigured"`
-	OrcaSlicerExists     bool   `json:"orcaSlicerExists"`
-	OrcaSlicerExecutable bool   `json:"orcaSlicerExecutable"`
+	Status                 string `json:"status"`
+	DataPath               string `json:"dataPath"`
+	DataPathExists         bool   `json:"dataPathExists"`
+	DataPathWritable       bool   `json:"dataPathWritable"`
+	OrcaSlicerPath         string `json:"orcaSlicerPath"`
+	OrcaSlicerConfigured   bool   `json:"orcaSlicerConfigured"`
+	OrcaSlicerExists       bool   `json:"orcaSlicerExists"`
+	OrcaSlicerExecutable   bool   `json:"orcaSlicerExecutable"`
+	OrcaProfilesPath       string `json:"orcaProfilesPath"`
+	OrcaProfilesPathExists bool   `json:"orcaProfilesPathExists"`
+	OrcaVersion            string `json:"orcaVersion"`
+	GenerateImage          bool   `json:"generateImage"`
+	ResolveProfiles        bool   `json:"resolveProfiles"`
+	SanitizeProfiles       bool   `json:"sanitizeProfiles"`
 }
 
 func (h Handler) Check(w http.ResponseWriter, r *http.Request) {
 	response := Response{
-		DataPathExists:       pathExists(h.DataPath),
-		DataPathWritable:     pathWritable(h.DataPath),
-		OrcaSlicerConfigured: h.OrcaSlicerPath != "",
-		OrcaSlicerExists:     h.OrcaSlicerPath != "" && pathExists(h.OrcaSlicerPath),
-		OrcaSlicerExecutable: h.OrcaSlicerPath != "" && executable(h.OrcaSlicerPath),
+		DataPath:               h.DataPath,
+		DataPathExists:         pathExists(h.DataPath),
+		DataPathWritable:       pathWritable(h.DataPath),
+		OrcaSlicerPath:         h.OrcaSlicerPath,
+		OrcaSlicerConfigured:   h.OrcaSlicerPath != "",
+		OrcaSlicerExists:       h.OrcaSlicerPath != "" && pathExists(h.OrcaSlicerPath),
+		OrcaSlicerExecutable:   h.OrcaSlicerPath != "" && executable(h.OrcaSlicerPath),
+		OrcaProfilesPath:       h.OrcaProfilesPath,
+		OrcaProfilesPathExists: h.OrcaProfilesPath != "" && pathExists(h.OrcaProfilesPath),
+		OrcaVersion:            h.OrcaVersion,
+		GenerateImage:          h.GenerateImage,
+		ResolveProfiles:        h.ResolveProfiles,
+		SanitizeProfiles:       h.SanitizeProfiles,
 	}
 
 	status := http.StatusOK

@@ -14,6 +14,9 @@ type Config struct {
 	SliceTimeout     time.Duration
 	CORSOrigins      string
 	GenerateImage    bool
+	ResolveProfiles  bool
+	SanitizeProfiles bool
+	OrcaVersion      string
 }
 
 func Load() Config {
@@ -46,6 +49,14 @@ func Load() Config {
 		OrcaProfilesPath: orcaProfilesPath,
 		SliceTimeout:     time.Duration(timeoutSeconds) * time.Second,
 		CORSOrigins:      os.Getenv("CORS_ORIGINS"),
-		GenerateImage:    os.Getenv("GENERATE_IMAGE") == "true" || os.Getenv("GENERATE_IMAGE") == "1",
+		GenerateImage:    boolEnv("GENERATE_IMAGE"),
+		ResolveProfiles:  boolEnv("RESOLVE_PROFILES"),
+		SanitizeProfiles: boolEnv("SANITIZE_PROFILES"),
+		OrcaVersion:      os.Getenv("ORCA_VERSION"),
 	}
+}
+
+func boolEnv(name string) bool {
+	value := os.Getenv(name)
+	return value == "true" || value == "1" || value == "on"
 }

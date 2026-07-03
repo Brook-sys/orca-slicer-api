@@ -1,6 +1,20 @@
 package slicer
 
-import "testing"
+import (
+	"net/http/httptest"
+	"testing"
+)
+
+func TestParseSettingsUsesContainerDefaults(t *testing.T) {
+	req := httptest.NewRequest("POST", "/slice", nil)
+	settings, err := parseSettings(req, true, true, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !settings.GenerateImage || !settings.ResolveProfiles || !settings.SanitizeProfiles {
+		t.Fatalf("expected container defaults to be applied")
+	}
+}
 
 func TestValidModelFile(t *testing.T) {
 	valid := []string{"model.stl", "model.step", "model.stp", "model.3mf"}

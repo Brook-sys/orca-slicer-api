@@ -15,6 +15,7 @@ Em produção, substitua pelo host do container/API.
 ### Conceitos e Operação
 
 - [Visão Geral](api/overview.md)
+- [Healthcheck](api/health.md)
 - [Configuração](api/configuration.md)
 - [Executando](api/running.md)
 - [Arquitetura](api/architecture.md)

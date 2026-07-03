@@ -26,5 +26,7 @@ services:
       - ./data:/app/data
     environment:
       - GENERATE_IMAGE=true
+      - RESOLVE_PROFILES=true
+      - SANITIZE_PROFILES=true
       - SLICE_TIMEOUT_SECONDS=3600
 ```

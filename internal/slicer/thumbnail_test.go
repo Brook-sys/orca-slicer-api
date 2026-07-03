@@ -27,6 +27,26 @@ func TestPNGThumbnailBlockProducesReferenceFormat(t *testing.T) {
 	}
 }
 
+func TestExtractThumbnailFromGCode(t *testing.T) {
+	dir := t.TempDir()
+	gcodePath := filepath.Join(dir, "thumb.gcode")
+	gcode := `; THUMBNAIL_BLOCK_START
+;
+; thumbnail begin 160x160 12
+; abc
+; def
+; thumbnail end
+; THUMBNAIL_BLOCK_END
+G28
+`
+	if err := os.WriteFile(gcodePath, []byte(gcode), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := extractThumbnailFromGCode(gcodePath); got != "abcdef" {
+		t.Fatalf("expected abcdef, got %q", got)
+	}
+}
+
 func TestAddNeptune4ThumbnailsToGCode(t *testing.T) {
 	dir := t.TempDir()
 	gcodePath := filepath.Join(dir, "out.gcode")

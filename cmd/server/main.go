@@ -21,7 +21,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	healthHandler := health.Handler{DataPath: cfg.DataPath, OrcaSlicerPath: cfg.OrcaSlicerPath}
+	healthHandler := health.Handler{
+		DataPath:         cfg.DataPath,
+		OrcaSlicerPath:   cfg.OrcaSlicerPath,
+		OrcaProfilesPath: cfg.OrcaProfilesPath,
+		OrcaVersion:      cfg.OrcaVersion,
+		GenerateImage:    cfg.GenerateImage,
+		ResolveProfiles:  cfg.ResolveProfiles,
+		SanitizeProfiles: cfg.SanitizeProfiles,
+	}
 	profileHandler := profiles.Handler{Store: profileStore}
 	sliceService := &slicer.Service{
 		DataPath:         cfg.DataPath,
@@ -29,6 +37,8 @@ func main() {
 		OrcaProfilesPath: cfg.OrcaProfilesPath,
 		Timeout:          cfg.SliceTimeout,
 		GenerateImage:    cfg.GenerateImage,
+		ResolveProfiles:  cfg.ResolveProfiles,
+		SanitizeProfiles: cfg.SanitizeProfiles,
 		State:            slicer.NewStateStore(cfg.DataPath),
 	}
 	sliceHandler := slicer.Handler{Service: sliceService}

@@ -9,6 +9,8 @@
 | `ORCASLICER_PATH` | Sim (slicing) | - | Caminho do AppRun do OrcaSlicer |
 | `ORCA_PROFILES_PATH` | Não | `/app/squashfs-root/resources/profiles` | Built-ins para resolver `inherits` |
 | `GENERATE_IMAGE` | Não | `false` | Gera thumbnail PNG 160x160 automaticamente |
+| `RESOLVE_PROFILES` | Não | `false` | Define `resolveProfiles=true` como padrão para `/slice` e `/slice/preview` |
+| `SANITIZE_PROFILES` | Não | `false` | Define `sanitizeProfiles=true` como padrão para `/slice` e `/slice/preview` |
 | `SLICE_TIMEOUT_SECONDS` | Não | `1800` | Timeout máximo de slicing |
 | `CORS_ORIGINS` | Não | `*` | Origins separados por vírgula |
 

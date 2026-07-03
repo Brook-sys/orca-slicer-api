@@ -72,6 +72,31 @@ Use este endpoint para diagnosticar erros do OrcaSlicer CLI.
 curl http://localhost:3000/slice/debug
 ```
 
+## Logs de Slicing
+
+No início de cada slicing, a API registra flags principais em log estruturado:
+
+```txt
+slicing started file=model.stl export_type=gcode generate_image=true enable_support=true brim_type=auto_brim print_sequence_by_object=false resolve_profiles=true sanitize_profiles=true arrange=false orient=false
+```
+
+Campos logados:
+
+| Campo | Descrição |
+|-------|-----------|
+| `file` | Nome base do arquivo enviado |
+| `export_type` | `gcode` ou `3mf` |
+| `generate_image` | Se thumbnail será gerada |
+| `enable_support` | `true`, `false` ou `profile_default` |
+| `brim_type` | `auto_brim`, `no_brim` ou `profile_default` |
+| `print_sequence_by_object` | Sequência por objeto |
+| `resolve_profiles` | Resolução de profiles ativa |
+| `sanitize_profiles` | Sanitização ativa |
+| `arrange` | Arrange automático |
+| `orient` | Orient automático |
+
+A API não loga o conteúdo dos arquivos enviados nem JSON completo de profiles no log padrão.
+
 ## Recomendações de Debug
 
 1. Verifique `command` e `args` para reproduzir localmente.

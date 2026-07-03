@@ -55,6 +55,92 @@ EOF
 	}
 }
 
+func TestServicePreviewWithFakeSlicerDetectsSupportAndThumbnail(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script test")
+	}
+
+	dir := t.TempDir()
+	fake := filepath.Join(dir, "fake-preview-slicer.sh")
+	if err := os.WriteFile(fake, []byte(`#!/bin/sh
+out=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--outputdir" ]; then
+    shift
+    out="$1"
+  fi
+  shift
+done
+mkdir -p "$out"
+cat > "$out/result.gcode" <<'EOF'
+; total estimated time: 10m 1s
+; filament used [mm] = 500
+; filament used [g] = 5
+;TYPE:SUPPORT
+G1 X0 Y0
+EOF
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	service := &Service{DataPath: dir, OrcaSlicerPath: fake, Timeout: 5 * time.Second, State: NewStateStore(dir)}
+	result, err := service.Preview(context.Background(), "model.stl", testASCIISTL(), Settings{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.UsesSupport {
+		t.Fatal("expected preview to detect support")
+	}
+	if result.ThumbnailBase64 == "" {
+		t.Fatal("expected preview thumbnail")
+	}
+	if result.PrintTimeSeconds != 601 {
+		t.Fatalf("expected preview print time 601, got %v", result.PrintTimeSeconds)
+	}
+	if result.FilamentUsedG != 5 || result.FilamentUsedMm != 500 {
+		t.Fatalf("expected filament metadata, got g=%v mm=%v", result.FilamentUsedG, result.FilamentUsedMm)
+	}
+}
+
+func TestServicePreviewWithFakeSlicerWithoutSupport(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script test")
+	}
+
+	dir := t.TempDir()
+	fake := filepath.Join(dir, "fake-preview-no-support.sh")
+	if err := os.WriteFile(fake, []byte(`#!/bin/sh
+out=""
+while [ "$#" -gt 0 ]; do
+  if [ "$1" = "--outputdir" ]; then
+    shift
+    out="$1"
+  fi
+  shift
+done
+mkdir -p "$out"
+cat > "$out/result.gcode" <<'EOF'
+; total estimated time: 1m
+;TYPE:WALL-OUTER
+G1 X0 Y0
+EOF
+`), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	service := &Service{DataPath: dir, OrcaSlicerPath: fake, Timeout: 5 * time.Second, State: NewStateStore(dir)}
+	result, err := service.Preview(context.Background(), "model.stl", testASCIISTL(), Settings{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.UsesSupport {
+		t.Fatal("expected preview not to detect support")
+	}
+	if result.ThumbnailBase64 == "" {
+		t.Fatal("expected preview thumbnail")
+	}
+}
+
 func TestServiceSliceTimeoutWithFakeSlicer(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("shell script test")

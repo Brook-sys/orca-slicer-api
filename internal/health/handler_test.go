@@ -1,6 +1,7 @@
 package health
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -23,6 +24,13 @@ func TestHealthCheckHealthy(t *testing.T) {
 
 	if res.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", res.Code)
+	}
+	var response Response
+	if err := json.Unmarshal(res.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.DataPath != dir || response.OrcaSlicerPath != orcaPath {
+		t.Fatalf("expected configured paths in health response")
 	}
 }
 

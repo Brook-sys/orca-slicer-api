@@ -22,6 +22,8 @@ type Service struct {
 	OrcaProfilesPath string
 	Timeout          time.Duration
 	GenerateImage    bool
+	ResolveProfiles  bool
+	SanitizeProfiles bool
 	State            *StateStore
 	mu               sync.Mutex
 }
@@ -95,7 +97,18 @@ func (s *Service) Slice(ctx context.Context, filename string, data []byte, setti
 
 	exe := s.OrcaSlicerPath
 	cmd := exec.CommandContext(cmdCtx, exe, args...)
-	slog.Info("slicing started", "file", filepath.Base(filename), "export_type", settings.ExportType, "generate_image", settings.GenerateImage)
+	slog.Info("slicing started",
+		"file", filepath.Base(filename),
+		"export_type", settings.ExportType,
+		"generate_image", settings.GenerateImage,
+		"enable_support", optionalBoolLogValue(settings.EnableSupport),
+		"brim_type", optionalBrimLogValue(settings.BrimType),
+		"print_sequence_by_object", settings.PrintSequenceByObject,
+		"resolve_profiles", settings.ResolveProfiles,
+		"sanitize_profiles", settings.SanitizeProfiles,
+		"arrange", settings.Arrange,
+		"orient", settings.Orient,
+	)
 	started := time.Now()
 	output, err := cmd.CombinedOutput()
 	debug.Output = strings.TrimSpace(string(output))
@@ -423,4 +436,24 @@ func boolArg(value bool) string {
 		return "1"
 	}
 	return "0"
+}
+
+func optionalBoolLogValue(value *bool) string {
+	if value == nil {
+		return "profile_default"
+	}
+	if *value {
+		return "true"
+	}
+	return "false"
+}
+
+func optionalBrimLogValue(value *bool) string {
+	if value == nil {
+		return "profile_default"
+	}
+	if *value {
+		return "auto_brim"
+	}
+	return "no_brim"
 }

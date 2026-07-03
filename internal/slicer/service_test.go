@@ -89,6 +89,41 @@ func TestBuildArgsCanResolveNamedProfiles(t *testing.T) {
 	}
 }
 
+func TestBuildArgsInjectsTemporaryPresetControls(t *testing.T) {
+	service := Service{DataPath: t.TempDir()}
+	workdir := t.TempDir()
+	inputDir := filepath.Join(workdir, "input")
+	outputDir := filepath.Join(workdir, "output")
+	if err := os.MkdirAll(inputDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(outputDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	enableSupport := true
+	brimType := false
+	debug := SliceDebug{}
+	_, err := service.buildArgs(filepath.Join(inputDir, "model.stl"), inputDir, outputDir, Settings{
+		PresetProfile:         map[string]any{"name": "uploaded-preset"},
+		EnableSupport:         &enableSupport,
+		BrimType:              &brimType,
+		PrintSequenceByObject: true,
+	}, &debug)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if debug.Preset["enable_support"] != true {
+		t.Fatalf("expected enable_support true, got %#v", debug.Preset["enable_support"])
+	}
+	if debug.Preset["brim_type"] != "no_brim" {
+		t.Fatalf("expected brim_type no_brim, got %#v", debug.Preset["brim_type"])
+	}
+	if debug.Preset["print_sequence"] != "by object" {
+		t.Fatalf("expected print_sequence by object, got %#v", debug.Preset["print_sequence"])
+	}
+}
+
 func TestBuildArgsUsesUploadedProfilesBeforeSavedNames(t *testing.T) {
 	service := Service{DataPath: t.TempDir()}
 	workdir := t.TempDir()

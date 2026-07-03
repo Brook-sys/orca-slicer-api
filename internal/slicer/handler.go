@@ -143,7 +143,7 @@ func (h Handler) Slice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	settings, err := parseSettings(r, h.Service != nil && h.Service.GenerateImage)
+	settings, err := parseSettings(r, serviceGenerateImage(h.Service), serviceResolveProfiles(h.Service), serviceSanitizeProfiles(h.Service))
 	if err != nil {
 		httpx.WriteError(w, err)
 		return
@@ -194,7 +194,7 @@ func (h Handler) Preview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	settings, err := parseSettings(r, false)
+	settings, err := parseSettings(r, false, serviceResolveProfiles(h.Service), serviceSanitizeProfiles(h.Service))
 	if err != nil {
 		httpx.WriteError(w, err)
 		return
@@ -220,7 +220,7 @@ func (h Handler) Preview(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func parseSettings(r *http.Request, defaultGenerateImage bool) (Settings, error) {
+func parseSettings(r *http.Request, defaultGenerateImage bool, defaultResolveProfiles bool, defaultSanitizeProfiles bool) (Settings, error) {
 	settings := Settings{
 		Printer:               r.FormValue("printer"),
 		Preset:                r.FormValue("preset"),
@@ -231,8 +231,8 @@ func parseSettings(r *http.Request, defaultGenerateImage bool) (Settings, error)
 		Orient:                parseBool(r.FormValue("orient")),
 		ExportType:            r.FormValue("exportType"),
 		MulticolorOnePlate:    parseBool(r.FormValue("multicolorOnePlate")),
-		ResolveProfiles:       parseBool(r.FormValue("resolveProfiles")),
-		SanitizeProfiles:      parseBool(r.FormValue("sanitizeProfiles")),
+		ResolveProfiles:       parseBool(r.FormValue("resolveProfiles")) || defaultResolveProfiles,
+		SanitizeProfiles:      parseBool(r.FormValue("sanitizeProfiles")) || defaultSanitizeProfiles,
 		GenerateImage:         parseBool(r.FormValue("generateImage")) || defaultGenerateImage,
 		EnableSupport:         parseBoolPtr(r.FormValue("enableSupport")),
 		BrimType:              parseBoolPtr(r.FormValue("brimType")),
@@ -318,6 +318,18 @@ func readJSONProfileParts(r *http.Request, field string) ([]map[string]any, erro
 func validModelFile(name string) bool {
 	ext := strings.ToLower(filepath.Ext(name))
 	return ext == ".stl" || ext == ".step" || ext == ".stp" || ext == ".3mf"
+}
+
+func serviceGenerateImage(service *Service) bool {
+	return service != nil && service.GenerateImage
+}
+
+func serviceResolveProfiles(service *Service) bool {
+	return service != nil && service.ResolveProfiles
+}
+
+func serviceSanitizeProfiles(service *Service) bool {
+	return service != nil && service.SanitizeProfiles
 }
 
 func parseBool(value string) bool {

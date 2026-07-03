@@ -60,6 +60,8 @@ curl -X POST http://HOST:3000/slice \
 | `ORCASLICER_PATH` | `/app/squashfs-root/AppRun` |
 | `ORCA_PROFILES_PATH` | `/app/squashfs-root/resources/profiles` |
 | `GENERATE_IMAGE` | `true` se todo G-code precisa thumbnail |
+| `RESOLVE_PROFILES` | `true` se todos slices devem resolver inherits por padrão |
+| `SANITIZE_PROFILES` | `true` se todos slices devem sanitizar profiles por padrão |
 | `SLICE_TIMEOUT_SECONDS` | `1800` ou maior para modelos grandes |
 
 ## Verificações de Container

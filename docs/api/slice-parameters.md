@@ -36,8 +36,8 @@ filamentProfile > filament
 
 | Campo | Tipo | Padrão | Descrição |
 |-------|------|--------|-----------|
-| `resolveProfiles` | bool | `false` | Resolve `inherits` e built-ins antes do slicing |
-| `sanitizeProfiles` | bool | `false` | Ajusta fields temporários conhecidos por quebrar o Orca CLI |
+| `resolveProfiles` | bool | `false` ou env `RESOLVE_PROFILES` | Resolve `inherits` e built-ins antes do slicing |
+| `sanitizeProfiles` | bool | `false` ou env `SANITIZE_PROFILES` | Ajusta fields temporários conhecidos por quebrar o Orca CLI |
 
 ## Controle de Output
 
