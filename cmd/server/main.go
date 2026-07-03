@@ -9,6 +9,7 @@ import (
 	"github.com/Brook-sys/orca-slicer-api/internal/docs"
 	"github.com/Brook-sys/orca-slicer-api/internal/health"
 	"github.com/Brook-sys/orca-slicer-api/internal/httpx"
+	"github.com/Brook-sys/orca-slicer-api/internal/jobs"
 	"github.com/Brook-sys/orca-slicer-api/internal/profiles"
 	"github.com/Brook-sys/orca-slicer-api/internal/slicer"
 )
@@ -41,7 +42,11 @@ func main() {
 		SanitizeProfiles: cfg.SanitizeProfiles,
 		State:            slicer.NewStateStore(cfg.DataPath),
 	}
-	sliceHandler := slicer.Handler{Service: sliceService}
+	jobStore := jobs.NewStore()
+	sliceService.JobStore = jobStore
+
+	sliceHandler := slicer.Handler{Service: sliceService, JobStore: jobStore}
+	jobHandler := jobs.Handler{Store: jobStore}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /openapi.json", docs.OpenAPIHandler)
@@ -62,6 +67,10 @@ func main() {
 	mux.HandleFunc("POST /slice/resolve-profiles", sliceHandler.ResolveProfiles)
 	mux.HandleFunc("POST /slice", sliceHandler.Slice)
 	mux.HandleFunc("POST /slice/preview", sliceHandler.Preview)
+	mux.HandleFunc("POST /slice/async", sliceHandler.SliceAsync)
+	mux.HandleFunc("GET /jobs/{id}", jobHandler.GetJob)
+	mux.HandleFunc("GET /jobs/{id}/download", jobHandler.DownloadJob)
+	mux.HandleFunc("DELETE /jobs/{id}", jobHandler.CancelJob)
 
 	handler := httpx.Middleware(cfg.CORSOrigins, mux)
 

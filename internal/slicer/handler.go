@@ -9,12 +9,14 @@ import (
 	"strings"
 
 	"github.com/Brook-sys/orca-slicer-api/internal/httpx"
+	"github.com/Brook-sys/orca-slicer-api/internal/jobs"
 )
 
 const maxModelSize = 100_000_000
 
 type Handler struct {
-	Service *Service
+	Service  *Service
+	JobStore *jobs.Store
 }
 
 func (h Handler) Status(w http.ResponseWriter, r *http.Request) {
@@ -164,6 +166,65 @@ func (h Handler) Slice(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, err)
 		return
 	}
+}
+
+func (h Handler) SliceAsync(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseMultipartForm(maxModelSize); err != nil {
+		httpx.WriteError(w, httpx.NewError(http.StatusBadRequest, "Invalid multipart form"))
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		httpx.WriteError(w, httpx.NewError(http.StatusBadRequest, "Model file is required"))
+		return
+	}
+	defer file.Close()
+
+	if !validModelFile(header.Filename) {
+		httpx.WriteError(w, httpx.NewError(http.StatusBadRequest, "Invalid file type. Only STL, STEP and 3MF files are allowed"))
+		return
+	}
+
+	data, err := io.ReadAll(io.LimitReader(file, maxModelSize+1))
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	if len(data) > maxModelSize {
+		httpx.WriteError(w, httpx.NewError(http.StatusBadRequest, "Model file is too large"))
+		return
+	}
+
+	settings, err := parseSettings(r, serviceGenerateImage(h.Service), serviceResolveProfiles(h.Service), serviceSanitizeProfiles(h.Service))
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+	if err := parseUploadedProfiles(r, &settings); err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+
+	job, err := h.JobStore.Create()
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
+
+	go func() {
+		result, err := h.Service.SliceAsync(r.Context(), job.ID, header.Filename, data, settings)
+		if err != nil {
+			h.JobStore.UpdateStatus(job.ID, jobs.StatusFailed, err)
+			return
+		}
+		h.JobStore.SetResult(job.ID, result.Files, result.Workdir)
+		h.JobStore.UpdateStatus(job.ID, jobs.StatusCompleted, nil)
+	}()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(job)
 }
 
 func (h Handler) Preview(w http.ResponseWriter, r *http.Request) {
