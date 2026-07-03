@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/Brook-sys/orca-slicer-api/internal/httpx"
 )
@@ -61,4 +62,33 @@ func (h Handler) CancelJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h Handler) ListJobs(w http.ResponseWriter, r *http.Request) {
+	type jobView struct {
+		ID        string    `json:"id"`
+		Status    Status    `json:"status"`
+		Progress  int       `json:"progress"`
+		Error     string    `json:"error,omitempty"`
+		CreatedAt time.Time `json:"createdAt"`
+		UpdatedAt time.Time `json:"updatedAt"`
+	}
+
+	h.Store.mu.RLock()
+	defer h.Store.mu.RUnlock()
+
+	list := make([]jobView, 0, len(h.Store.jobs))
+	for _, job := range h.Store.jobs {
+		list = append(list, jobView{
+			ID:        job.ID,
+			Status:    job.Status,
+			Progress:  job.Progress,
+			Error:     job.Error,
+			CreatedAt: job.CreatedAt,
+			UpdatedAt: job.UpdatedAt,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(list)
 }
