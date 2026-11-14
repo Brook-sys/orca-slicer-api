@@ -1,116 +1,24 @@
-# Compatibilidade Elegoo Neptune 4
+# Thumbnails e controles Neptune 4
 
-Esta API possui alguns recursos pensados para o fluxo com Elegoo Neptune 4 e OrcaSlicer CLI.
+`generateImage=true` ou `GENERATE_IMAGE=true` solicita pós-processamento do G-code pela API. A miniatura não é nativa do CLI: renderiza a geometria STL em PNG 160×160, fundo transparente, codifica em base64 e insere comentários `; thumbnail begin`/`; thumbnail end`. Se já existir esse marcador, não gera outro bloco.
 
-## Thumbnail
+## Limites
 
-Use:
+- O parser de miniatura aceita STL binário/ASCII. Aceitar STEP/3MF no endpoint de slicing **não** significa que a geração de imagem suporte esses formatos; pode falhar após o CLI concluir.
+- Em múltiplos modelos, usa a geometria do **primeiro** modelo para todos os arquivos de saída. Não representa disposição final da mesa, toolpath ou suporte.
+- `exportType=3mf` não recebe essa injeção de thumbnail.
+- O formato foi direcionado ao fluxo Neptune 4, mas não há garantia universal de exibição por firmware/tela nem impressão física validada nesta atualização.
 
-```txt
-generateImage=true
-```
+## Controles de processo
 
-Ou configure no container:
+| Multipart | Efeito no preset temporário |
+|---|---|
+| `enableSupport=true/false` | `enable_support` bool, se presente |
+| `brimType=true` | `brim_type=auto_brim` |
+| `brimType=false` | `brim_type=no_brim` |
+| `printSequenceByObject=true` | `print_sequence=by object` |
+| Sequência ausente/false | `print_sequence=by layer` |
 
-```txt
-GENERATE_IMAGE=true
-```
+Suporte e brim ausentes preservam o valor do processo. Esses controles só podem atuar sobre um preset selecionado/enviado. Revise colisões e folgas antes de imprimir por objeto; a API não valida segurança mecânica.
 
-A thumbnail gerada usa:
-
-- PNG 160x160
-- Base64 embutido no G-code
-- Cor do modelo: `#22948a`
-- Fundo transparente
-- Formato compatível com o padrão observado em G-code de referência da Neptune 4
-
-## Suportes
-
-Use:
-
-```txt
-enableSupport=true
-```
-
-ou
-
-```txt
-enableSupport=false
-```
-
-Isso injeta `enable_support` no preset temporário.
-
-## Brim
-
-Use:
-
-```txt
-brimType=true
-```
-
-para:
-
-```txt
-brim_type=auto_brim
-```
-
-Use:
-
-```txt
-brimType=false
-```
-
-para:
-
-```txt
-brim_type=no_brim
-```
-
-## Sequência de Impressão
-
-Use:
-
-```txt
-printSequenceByObject=true
-```
-
-para:
-
-```txt
-print_sequence=by object
-```
-
-Padrão:
-
-```txt
-print_sequence=by layer
-```
-
-## Recomendação de Slice
-
-```bash
-curl -X POST http://localhost:3000/slice \
-  -F file=@model.stl \
-  -F printer=Elegoo_Neptune_4_0_4_nozzle_-OpenNept4une \
-  -F preset=0_2mm_standard_0_4_ONP \
-  -F filament=PLA_personalizado1_ONP \
-  -F resolveProfiles=true \
-  -F sanitizeProfiles=true \
-  -F generateImage=true \
-  -F enableSupport=true \
-  -F brimType=true \
-  -F printSequenceByObject=false \
-  -o result.gcode
-```
-
-## Recomendação de Preview
-
-```bash
-curl -X POST http://localhost:3000/slice/preview \
-  -F file=@model.stl \
-  -F printer=Elegoo_Neptune_4_0_4_nozzle_-OpenNept4une \
-  -F preset=0_2mm_standard_0_4_ONP \
-  -F filament=PLA_personalizado1_ONP \
-  -F resolveProfiles=true \
-  -F sanitizeProfiles=true
-```
+Veja [parâmetros](slice-parameters.md), [preview](preview.md) e [exemplos genéricos](examples.md).

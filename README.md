@@ -1,193 +1,109 @@
 # Orca Slicer API
 
-Uma API REST completa escrita em Go para gerenciar perfis JSON e controlar o **OrcaSlicer CLI** de forma automatizada e escalável via Docker. Criada para integrar fatiamento 3D em sistemas web, Print Farms e CRMs.
+API REST em **Go 1.23, somente biblioteca padrão**, que gerencia perfis JSON e executa o OrcaSlicer CLI. Oferece fatiamento síncrono, jobs assíncronos, múltiplos modelos, prévia com metadados e miniaturas geradas pela API. Não é uma fila distribuída nem um serviço multiusuário isolado.
 
----
+> **Estado da atualização 2.5.0:** correção de compatibilidade enviada para build. Há sucesso de CLI com perfis achatados pela API, em cubo e STL de 5.952 triângulos; o fluxo HTTP completo e a imagem final ainda precisam de validação. Não houve equivalência com a referência 2.4.0 nem impressão física validada. Este documento não atesta publicação concluída ou deploy. Veja [evidências e limites](docs/api/overview.md).
 
-## 🚀 Recursos Principais
+## Primeiros passos
 
-- **Slicing Assíncrono e Síncrono:** Fatie arquivos pequenos na mesma requisição, ou use a fila assíncrona com percentual de progresso em tempo real para arquivos enormes.
-- **Plating (Multi-modelo):** Aceita múltiplos arquivos `.stl/.3mf` de uma vez, usando o `--arrange` do Orca para organizá-los na mesa.
-- **Gestão Completa de Profiles:** Faça upload, importe via URL, crie aliases, e visualize os embutidos do próprio OrcaSlicer sem encostar em bancos de dados (tudo armazenado em disco de forma portável).
-- **Cache Inteligente:** Slices idênticos não gastam CPU duas vezes. Os G-codes e `.3mf` ficam armazenados no cache (`DATA_PATH/cache`) e são servidos imediatamente.
-- **Limpeza Automática:** Jobs cancelados/falhados/concluídos antigos e cache expirado são limpos automaticamente de hora em hora.
-- **Thumbnails Nativos:** Gera miniaturas em PNG do modelo fatiado no próprio payload G-code.
-- **Swagger / OpenAPI:** Documentação da API com interface web de testes embutida.
+Para o roteiro completo e conciso, veja [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md).
 
----
+### 1. Preparar o ambiente
 
-## 🏃 Como rodar (Docker Compose)
+A imagem atual é **somente `linux/amd64`**. Não há suporte ARM64 validado. Instale Docker com Compose e reserve um diretório de dados gravável. A API **não tem autenticação**; use rede confiável ou proxy com controle de acesso. O exemplo limita a publicação ao localhost e mantém a porta padrão 3000.
 
-A maneira mais rápida de começar é usar o **Docker Compose**. O contêiner já vem com todas as dependências e o motor do OrcaSlicer embutido.
-
-Crie um arquivo `docker-compose.yml`:
+Para testar a correção no código local, crie `compose.yaml`:
 
 ```yaml
 services:
-  slicer-api:
-    image: ghcr.io/brook-sys/orca-slicer-api:latest
+  api:
+    build:
+      context: .
+      args:
+        ORCA_VERSION: "2.5.0"
+    platform: linux/amd64
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     volumes:
       - ./data:/app/data
     environment:
-      # Gera miniatura PNG de 160x160 junto no G-code por padrão
-      - GENERATE_IMAGE=true
-      # Tenta herdar de perfis "Base" automaticamente ao invés de falhar
-      - RESOLVE_PROFILES=true
-      # Sanitiza campos como "from: User" ou velocidades nulas que quebram o CLI
-      - SANITIZE_PROFILES=true
-      # Tempo máximo que um slicing pode demorar (em segundos)
-      - SLICE_TIMEOUT_SECONDS=3600
+      ORCA_PROFILES_PATH: /app/profiles-json/resources/profiles
+      SLICE_TIMEOUT_SECONDS: "1800"
 ```
-
-E suba a aplicação:
 
 ```bash
-docker-compose up -d
+mkdir -p data
+docker compose up -d --build
+curl --fail-with-body http://localhost:3000/health
 ```
 
-Verifique se está rodando acessando o status do motor:
-```bash
-curl http://localhost:3000/health
-```
+O build baixa o AppImage e os JSON upstream da mesma tag; requer acesso à rede. Para usar GHCR em vez do build local, escolha uma tag/digest cuja validação você tenha confirmado. `latest` não prova que a correção está presente.
 
----
+`/health` confere arquivos e permissões, não executa um slice. `orcaVersion` vem de configuração, não da inspeção do binário. Veja [execução](docs/api/running.md) e [health](docs/api/health.md).
 
-## 📚 Como Usar a API: Guia Rápido
+### 2. Cadastrar perfis próprios
 
-Aqui estão os exemplos práticos mais comuns no dia a dia. Todos os arquivos são postados no formato `multipart/form-data`.
-
-### 1. Slicing Síncrono (O básico)
-Baixa o G-code final na mesma requisição. Ideal para modelos pequenos ou integrações diretas.
+Exporte perfis JSON compatíveis com seu equipamento. Os arquivos abaixo são placeholders locais, não assets fornecidos pelo repositório:
 
 ```bash
-curl -X POST http://localhost:3000/slice \
-  -F file=@meu_arquivo.stl \
-  -F printer="Elegoo Neptune 4 0.4 nozzle" \
-  -F preset="0.20mm Standard @Elegoo N4 0.4 nozzle" \
-  -F filament="Generic PLA @Elegoo" \
-  -F generateImage=true \
-  -o resultado.gcode
+curl --fail-with-body http://localhost:3000/profiles/printers/upload \
+  -F file=@printer.json -F name=minha_impressora
+curl --fail-with-body http://localhost:3000/profiles/presets/upload \
+  -F file=@preset.json -F name=meu_processo
+curl --fail-with-body http://localhost:3000/profiles/filaments/upload \
+  -F file=@filament.json -F name=meu_filamento
 ```
 
-### 2. Slicing com Múltiplos Arquivos (Plating)
-Você pode enviar várias peças passando a chave `files` múltiplas vezes e pedindo para a API arranjá-las.
+`name` é obrigatório e aceita apenas letras ASCII, números, `_` e `-`; o arquivo precisa terminar em `.json`. Upload substitui um perfil de mesmo nome. O JSON é validado sintaticamente, não quanto à segurança ou compatibilidade com a impressora.
+
+### 3. Conferir a resolução e fatiar
 
 ```bash
-curl -X POST http://localhost:3000/slice \
-  -F files=@cabeca.stl \
-  -F files=@corpo.stl \
-  -F files=@bracos.stl \
-  -F arrange=true \
-  -o resultado_junto.gcode
-```
+curl --fail-with-body http://localhost:3000/slice/resolve-profiles \
+  -H 'Content-Type: application/json' \
+  -d '{"printer":"minha_impressora","preset":"meu_processo","filament":"meu_filamento"}'
 
-### 3. Slicing Assíncrono (O melhor para modelos grandes)
-Quando o modelo é muito pesado (ex. 100MB), a requisição `POST /slice` convencional pode sofrer _Timeout_ do roteador/proxy. Use a fila Async.
-
-**Passo 3.1:** Inicie o Job:
-```bash
-curl -X POST http://localhost:3000/slice/async \
-  -F file=@dragao.stl
-```
-A API responde na hora (Código `202 Accepted`):
-```json
-{
-  "id": "e3b0c44298fc1c14",
-  "status": "pending",
-  "progress": 0,
-  "createdAt": "2026-07-03T15:04:05Z"
-}
-```
-
-**Passo 3.2:** Acompanhe o progresso (Polling):
-```bash
-curl http://localhost:3000/jobs/e3b0c44298fc1c14
-```
-_A API retornará `"progress": 45, "status": "slicing"`._
-
-**Passo 3.3:** Faça o Download (quando `"status": "completed"`):
-```bash
-curl -OJ http://localhost:3000/jobs/e3b0c44298fc1c14/download
-```
-
-**Passo Bônus:** Listar ou cancelar jobs:
-```bash
-# Lista todos os jobs em andamento/concluídos recentemente
-curl http://localhost:3000/jobs
-
-# Cancela um job travado/indesejado
-curl -X DELETE http://localhost:3000/jobs/e3b0c44298fc1c14
-```
-
-### 4. Consultando Profiles disponíveis (Built-ins)
-Para saber quais impressoras, filamentos e configs vêm instalados no Orca nativamente, basta pedir a lista:
-
-```bash
-curl http://localhost:3000/profiles/builtins/printers
-curl http://localhost:3000/profiles/builtins/presets
-curl http://localhost:3000/profiles/builtins/filaments
-```
-
-### 5. Configurações Dinâmicas Rápidas (Preview & Overrides)
-Se você quer simular se o modelo precisa de suportes antes de baixar o G-Code pesado, ou quer injetar um parâmetro na mosca, utilize:
-
-```bash
-curl -X POST http://localhost:3000/slice/preview \
+curl --fail-with-body http://localhost:3000/slice \
   -F file=@modelo.stl \
-  -F enableSupport=true \
-  -F brimType=false \
-  -F printSequenceByObject=true
+  -F printer=minha_impressora \
+  -F preset=meu_processo \
+  -F filament=meu_filamento \
+  -D resultado.headers -o resultado.gcode
 ```
 
-Isso não devolve o arquivo inteiro, apenas um JSON de metadados contendo o tempo de impressão, gramas gastas, thumbnail e se a peça *precisou* de suportes ou não.
+Confira o HTTP, o arquivo e os metadados antes de imprimir. Múltiplos resultados retornam ZIP. Não envie um resultado à impressora sem revisar dimensões, temperaturas, movimentos e compatibilidade dos perfis.
 
----
+## Compatibilidade de perfis no OrcaSlicer 2.5.0
 
-## 📊 Endpoints Completos
+- O AppImage inspecionado contém **6 JSON e 72 caches binários `.opc`**, serializados internamente com cereal. Não são ZIPs nem uma API pública de perfis.
+- O repositório upstream na tag `v2.5.0` contém **14.813 JSON** em `resources/profiles`. O stage `vendorprofiles` copia esses JSON para `/app/profiles-json/resources/profiles`, sem substituir os recursos originais do AppImage.
+- `ORCA_PROFILES_PATH` deve apontar para essa **raiz**, não `/app/profiles-json` nem uma pasta de categoria.
+- Perfis **nomeados** são sempre resolvidos pela API, inclusive com `resolveProfiles=false`: herança recursiva, overrides e remoção de `inherits` antes do CLI. A flag permanece por compatibilidade.
+- O leitor de perfis em disco tolera BOM UTF-8. Isso não estende a tolerância aos uploads/imports JSON.
+- A busca por tokens equivalentes é último recurso, rejeita ambiguidades e gera `warnings` nos endpoints de resolução quando usada. Não garante equivalência semântica; revise os resultados.
+- Perfis multipart são diretos e **não** passam pela resolução de herança. Envie-os completos/planos.
 
-| Categoria | Método & Rota | Funcionalidade |
-|-----------|---------------|----------------|
-| **Core** | `GET /health` | Retorna saúde da API e caminhos do sistema. |
-| **Core** | `GET /metrics` | Estatísticas (uptime, memória e uso da fila/cache). |
-| **Slice** | `POST /slice` | Fatiamento Síncrono direto (Retorna G-code/ZIP). |
-| **Slice** | `POST /slice/async` | Inicia fatiamento na fila (Retorna Job ID). |
-| **Slice** | `POST /slice/preview`| Simula fatiamento e retorna Metadata + Thumbnail PNG 160px. |
-| **Jobs** | `GET /jobs` | Lista todos os jobs conhecidos pela API. |
-| **Jobs** | `GET /jobs/{id}` | Vê detalhes/percentual de um job. |
-| **Jobs** | `GET /jobs/{id}/download` | Baixa o arquivo do job finalizado. |
-| **Jobs** | `DELETE /jobs/{id}` | Força o cancelamento daquele fatiamento CLI. |
-| **Profiles**| `GET /profiles/builtins/{cat}`| Traz JSON com a lista do que já vem embutido no motor do OrcaSlicer. |
-| **Profiles**| `GET /profiles/{category}` | Lista profiles customizados salvos localmente. |
-| **Profiles**| `POST /profiles/{category}/upload`| Sobe um novo arquivo JSON permanentemente no servidor. |
-| **Docs** | `GET /api-docs` | Swagger UI visual interativo da API. |
+## Capacidades e limites
 
----
+- `/slice` e `/slice/async` aceitam STL, STEP/STP e 3MF; vários campos `files` permitem múltiplos modelos.
+- Um único fatiamento por processo, inclusive preview. Chamadas concorrentes recebem `409`; um job async concorrente pode ser aceito e depois falhar. **Não existe fila de espera.**
+- Preview executa fatiamento real, força suporte e thumbnail; não é análise gratuita ou garantia de necessidade física de suporte.
+- Jobs persistem metadados, mas resultados não são recuperados para download após reinício. O download async entrega apenas o primeiro arquivo.
+- Cache existe, mas a chave não inclui todos os parâmetros nem o conteúdo atualizado dos perfis. Pode reutilizar resultado inadequado; não confie nele para validar alterações de configuração.
+- Listagem de built-ins não percorre toda a árvore vendor; pode retornar `404` mesmo quando a resolução por nome funciona.
+- Limite de modelo é 100.000.000 bytes **por arquivo**. Não há teto global de requisição, quota de disco ou proteção de carga implementados.
 
-## 🛠 Desenvolvimento Local & Código-Fonte
+## Documentação e desenvolvimento
 
-Caso deseje clonar o repositório e estender a API:
+- [Índice da API](docs/API.md): rotas, parâmetros, exemplos e operação.
+- [Segurança e limitações operacionais](docs/api/operations.md).
+- [Roadmap](docs/ROADMAP.md): somente planejamento, sem compromisso de entrega.
+- [Guia para agentes](AGENTS.md).
 
 ```bash
-# Clone o projeto
-git clone https://github.com/Brook-sys/orca-slicer-api.git
-cd orca-slicer-api
-
-# Baixe as dependências e rode a suíte de testes
 go test ./...
-
-# Rode localmente (é preciso ter o Orca AppRun nativo no sistema)
-export ORCASLICER_PATH=/caminho/para/OrcaSlicer/AppRun
-export DATA_PATH=./data
-export PORT=3000
-
-go run ./cmd/server
+go vet ./...
+go build -o /tmp/orca-slicer-api ./cmd/server
 ```
 
-A arquitetura do código se divide em:
-* `cmd/server/main.go` -> Ponto de entrada, injetor de dependências e roteador HTTP (`net/http.ServeMux` nativo do Go 1.22+).
-* `internal/slicer/` -> Lógica principal. Controla o binário do Orca, argumentos CLI, Pipes de stderr/stdout, Plating e Cache de G-code.
-* `internal/jobs/` -> Gerenciador de estado em memória + persistência em arquivo JSON. Acompanha progresso assíncrono.
-* `internal/profiles/` -> Lógica de gerir uploads, aliases e resolução de campos que herdam `(inherits)` de outros arquivos JSON.
-* `docs/api/` -> Arquivos mais detalhados sobre as operações e comportamento do motor (Para uso de sysadmins).
+O servidor pode iniciar sem Orca, mas `/health` fica degradado e slicing não funciona. Para execução local, configure `ORCASLICER_PATH` e `ORCA_PROFILES_PATH` explicitamente; veja [configuração](docs/api/configuration.md).

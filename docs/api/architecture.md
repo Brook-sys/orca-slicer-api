@@ -1,116 +1,42 @@
 # Arquitetura
 
-## Visão Geral
-
-A API é uma camada HTTP em Go que orquestra o OrcaSlicer CLI.
-
-Ela não implementa slicing próprio. O fluxo principal é:
-
-```txt
-Cliente HTTP
-  -> Handler Go
-  -> Service de slicing
-  -> Workdir temporário
-  -> Profiles temporários
-  -> OrcaSlicer CLI
-  -> Arquivos gerados
-  -> Metadata / Thumbnail / Debug
-  -> Resposta HTTP
+```text
+HTTP → handler → validação multipart/JSON → service/lock → arquivos temporários
+     → perfis nomeados resolvidos ou JSON diretos → OrcaSlicer CLI
+     → coleta de arquivos → thumbnail opcional → metadados → download/preview/job
 ```
 
-## Componentes
+| Pacote | Responsabilidade |
+|---|---|
+| `cmd/server` | Configuração, dependências, rotas e limpeza periódica |
+| `internal/config` | Ambiente e defaults |
+| `internal/httpx` | JSON, erros, CORS e logs HTTP |
+| `internal/profiles` | Perfis salvos, import/update e checksum/source |
+| `internal/slicer` | CLI, resolução/aliases, thumbnails, estado e cache |
+| `internal/jobs` | Metadados/progresso/cancelamento async |
+| `internal/health`, `internal/metrics` | Checks básicos e métricas JSON |
+| `internal/docs` | OpenAPI/Swagger manuais embutidos |
 
-| Componente | Caminho | Responsabilidade |
-|------------|---------|------------------|
-| Server | `cmd/server/main.go` | Inicializa config, stores, handlers e rotas |
-| Config | `internal/config` | Lê variáveis de ambiente |
-| HTTPX | `internal/httpx` | Middleware, JSON, erros HTTP |
-| Health | `internal/health` | Healthcheck de filesystem e OrcaSlicer |
-| Profiles | `internal/profiles` | CRUD/import/update de profiles JSON |
-| Slicer | `internal/slicer` | Slicing, preview, debug, resolução e thumbnail |
-| Docs | `internal/docs` | OpenAPI e Swagger UI |
+## Estado
 
-## Fluxo de `/slice`
-
-```txt
-POST /slice
-  -> parse multipart
-  -> valida modelo
-  -> parse settings
-  -> parse profiles multipart opcionais
-  -> lock global de slicing
-  -> cria workdir temporário
-  -> grava modelo e profiles temporários
-  -> monta argumentos do OrcaSlicer CLI
-  -> executa OrcaSlicer
-  -> coleta arquivos gerados
-  -> opcionalmente injeta thumbnail
-  -> extrai metadata
-  -> retorna G-code/3MF/ZIP
-```
-
-## Fluxo de `/slice/preview`
-
-```txt
-POST /slice/preview
-  -> parse multipart
-  -> força enableSupport=true
-  -> força geração de thumbnail
-  -> chama fluxo de slicing
-  -> detecta suporte no G-code
-  -> extrai thumbnail base64
-  -> retorna JSON
-```
-
-## Persistência
-
-A API não usa banco de dados.
-
-Tudo fica em `DATA_PATH`:
-
-```txt
+```text
 DATA_PATH/
-  printers/
-  presets/
-  filaments/
+  printers/*.json
+  presets/*.json
+  filaments/*.json
   profile-aliases.json
   slice-status.json
   slice-debug.json
+  jobs/*.json
+  cache/
 ```
 
-## Concorrência
+Perfis importados têm sidecar `.source.json`. Modelos/resultados também usam workdirs temporários fora de `DATA_PATH`; não há coleta completa de todos os casos de erro nem persistência durável de download async.
 
-Existe um lock global em memória para garantir apenas 1 slicing por vez.
+Um mutex por service permite só um processo de slicing por instância. Não há coordenação entre réplicas; chamadas concorrentes falham, não aguardam. Jobs async usam goroutine/contexto independente do request e o mesmo lock.
 
-Motivos:
+## Recursos Orca 2.5.0
 
-- OrcaSlicer consome muita RAM/CPU
-- Hardware alvo é limitado
-- Evita múltiplos processos concorrentes gerando instabilidade
+O Dockerfile mantém AppImage original em `/app/squashfs-root` e JSON da mesma tag em `/app/profiles-json/resources/profiles`. A API usa os JSON separados para achatar herança; não interpreta caches `.opc`. A resolução por nome é recursiva; a listagem HTTP de built-ins não é e permanece incompatível com a árvore vendor normal.
 
-## Segurança
-
-- Upload limitado a 100MB
-- Tipos permitidos: STL, STEP, 3MF
-- Overrides são temporários
-- Profiles salvos não são modificados durante slicing
-- Import por URL aceita HTTPS raw JSON
-
-## Debugabilidade
-
-O último job persiste:
-
-- status
-- comando
-- args
-- stdout/stderr
-- profiles temporários usados
-- result.json do Orca
-- erro estruturado do Orca
-
-Endpoints:
-
-```txt
-GET /slice/status
-GET /slice/debug
-```
+Preview usa o mesmo pipeline, forçando suporte e thumbnail. Miniatura é renderização STL pela API, não renderização do CLI. Cache é uma otimização com chave incompleta, não fronteira de correção. Consulte [limitações operacionais](operations.md).

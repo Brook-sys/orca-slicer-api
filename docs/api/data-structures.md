@@ -1,60 +1,35 @@
-# Estrutura de Dados
+# Contratos de dados
 
-## Settings (corpo do slice)
+Referências: `internal/slicer/types.go`, `overrides.go`, `state.go`, `internal/profiles/store.go`, `internal/jobs/jobs.go`. Não confundir structs internas com respostas HTTP.
 
-```go
-type Settings struct {
-    Printer               string
-    Preset                string
-    Filament              string
-    BedType               string
-    Plate                 string
-    Arrange               bool
-    Orient                bool
-    ExportType            string
-    MulticolorOnePlate    bool
-    ResolveProfiles       bool
-    SanitizeProfiles      bool
-    GenerateImage         bool
-    EnableSupport         *bool
-    BrimType              *bool
-    PrintSequenceByObject bool
-    Overrides             map[string]map[string]any
-    PrinterProfile        map[string]any
-    PresetProfile         map[string]any
-    FilamentProfiles      []map[string]any
-}
+## Metadados
+
+```json
+{"printTime":412,"filamentUsedG":1.0,"filamentUsedMm":340.83}
 ```
 
-## Metadata
+`printTime` em segundos; massa em gramas; comprimento em milímetros. Valores ilustrativos, não medições físicas. Sync retorna estimativas em headers; preview e estado retornam JSON.
 
-```go
-type Metadata struct {
-    PrintTimeSeconds float64
-    FilamentUsedG    float64
-    FilamentUsedMM   float64
-}
+## Perfil resolvido
+
+```json
+{"category":"presets","name":"meu_processo","resolved":{},"warnings":[]}
 ```
 
-## Result
+`resolved` contém o objeto mesclado sem `inherits`. `warnings` é array de strings, não um grafo de fontes. Resolução de conjunto retorna chaves opcionais `printer`, `preset`, `filament` com essa estrutura.
 
-```go
-type Result struct {
-    Files    []string
-    Workdir  string
-    Metadata Metadata
-}
-```
+## Perfil salvo/importado
 
-## PreviewResult
+Listagem: `{name,size,checksum,updatedAt,sourceUrl?}`. `size` em bytes, checksum SHA-256 hexadecimal. Upload/import/update: `{name,checksum,sourceUrl?,updated}`. Leia as diferenças de overwrite/updated em [perfis](profiles.md).
 
-```go
-type PreviewResult struct {
-    UsesSupport      bool
-    PrintTimeSeconds float64
-    FilamentUsedG    float64
-    FilamentUsedMm   float64
-    ThumbnailBase64  string
-    Workdir          string
-}
-```
+## Job
+
+Campos HTTP: `id`, `status`, `progress` (0–100), `createdAt`, `updatedAt`, `error` opcional. Estados: pending/slicing/completed/failed. `ResultFiles`, `Workdir` e função de cancelamento não são serializados; não fazem parte do JSON de job nem são recuperados para download após restart.
+
+## Settings e resultado interno
+
+Settings de slicing são parseadas do multipart; perfis diretos são arquivos, não campos JSON embutidos no body. Nomes/flags/overrides estão em [parâmetros](slice-parameters.md). `/slice/resolve-profiles` usa JSON com nomes/overrides, não upload de perfis.
+
+`Result{Files,Workdir,Metadata}` é interno: `/slice` retorna arquivo/ZIP, não esse objeto. `PreviewResult` também é interno; o handler expõe `usesSupport`, `printTime`, `filamentUsedG`, `filamentUsedMm`, `thumbnail`.
+
+Estado e debug globais têm contratos distintos dos jobs: veja [status/debug](status-debug.md).

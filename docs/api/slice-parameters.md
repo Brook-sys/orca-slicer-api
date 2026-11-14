@@ -1,100 +1,42 @@
-# Parâmetros de Slicing
+# Parâmetros de slicing
 
-Esta página centraliza os parâmetros multipart usados por `/slice` e `/slice/preview`.
+Multipart para `/slice` e `/slice/async`; `/slice/preview` aceita apenas um modelo no campo `file`.
 
-## Arquivo de Entrada
+| Campo | Default/comportamento |
+|---|---|
+| `file` | Modelo único; STL, STEP/STP, 3MF (extensão sem distinção de caixa) |
+| `files` repetido | Vários modelos no sync/async; se presente, tem prioridade sobre `file` |
+| `printer`, `preset`, `filament` | Nomes salvos ou vendor; sempre resolvidos/achatados pela API |
+| `printerProfile`, `presetProfile` | Arquivos JSON diretos; usa o primeiro de cada campo |
+| `filamentProfile` repetido | Um ou mais JSON diretos de filamento |
+| `overrides` | String JSON com objetos `printer`, `preset`, `filament`; default `{}` |
+| `resolveProfiles` | Flag legada, não desativa resolução de nomes |
+| `sanitizeProfiles` | Default `SANITIZE_PROFILES` ou false; define `from=system`, remove `small_perimeter_speed` dos presets |
+| `generateImage` | Default `GENERATE_IMAGE` ou false; thumbnail no G-code, não no export 3MF |
+| `exportType` | Vazio ou `gcode` para G-code; `3mf` para 3MF; demais valores retornam 400 |
+| `plate` | `1`; encaminhada ao CLI, sem validação numérica própria |
+| `arrange`, `orient` | false; encaminha `--arrange` e `--orient` como 0/1 |
+| `bedType` | Opcional; encaminha `--curr-bed-type` |
+| `multicolorOnePlate` | false; quando true, passa `--allow-multicolor-oneplate` |
+| `enableSupport` | Ausente preserva preset; presente injeta bool `enable_support` |
+| `brimType` | Ausente preserva preset; true → `auto_brim`, false → `no_brim` |
+| `printSequenceByObject` | false; sempre define preset como `by layer`; true define `by object` |
 
-| Campo | Tipo | Obrigatório | Usado em | Descrição |
-|-------|------|------------:|----------|-----------|
-| `file` | file | Sim | `/slice`, `/slice/preview` | Modelo STL, STEP ou 3MF |
+Boolean true: exatamente `true`, `1`, `on`. Qualquer outro texto é false. Para flags com default global, formulário e ambiente são combinados por OR: `false` não desliga ambiente true.
 
-## Profiles por Nome
+## Precedência
 
-| Campo | Tipo | Obrigatório | Descrição |
-|-------|------|------------:|-----------|
-| `printer` | string | Condicional | Nome do profile salvo em `printers` |
-| `preset` | string | Condicional | Nome do profile salvo em `presets` |
-| `filament` | string | Condicional | Nome do profile salvo em `filaments` |
-
-## Profiles Multipart
-
-| Campo | Tipo | Obrigatório | Descrição |
-|-------|------|------------:|-----------|
-| `printerProfile` | file JSON | Não | Profile de printer enviado diretamente |
-| `presetProfile` | file JSON | Não | Profile de preset/process enviado diretamente |
-| `filamentProfile` | file JSON | Não | Um ou mais profiles de filamento |
-
-Prioridade:
-
-```txt
-printerProfile > printer
-presetProfile > preset
-filamentProfile > filament
-```
-
-## Resolução e Sanitização
-
-| Campo | Tipo | Padrão | Descrição |
-|-------|------|--------|-----------|
-| `resolveProfiles` | bool | `false` ou env `RESOLVE_PROFILES` | Resolve `inherits` e built-ins antes do slicing |
-| `sanitizeProfiles` | bool | `false` ou env `SANITIZE_PROFILES` | Ajusta fields temporários conhecidos por quebrar o Orca CLI |
-
-## Controle de Output
-
-| Campo | Tipo | Padrão | Descrição |
-|-------|------|--------|-----------|
-| `exportType` | string | `gcode` | `gcode` ou `3mf` |
-| `plate` | string | `1` | Placa a ser fatiada |
-| `arrange` | bool | `false` | Executa arrange automático |
-| `orient` | bool | `false` | Executa orient automático |
-| `multicolorOnePlate` | bool | `false` | Passa `--allow-multicolor-oneplate` |
-
-## Controles Temporários de Preset
-
-| Campo | Tipo | Padrão | Efeito |
-|-------|------|--------|--------|
-| `enableSupport` | bool opcional | valor do preset | Injeta `enable_support=true/false` |
-| `brimType` | bool opcional | valor do preset | `true` → `auto_brim`; `false` → `no_brim` |
-| `printSequenceByObject` | bool | `false` | `true` → `print_sequence=by object`; `false` → `by layer` |
-
-## Thumbnail
-
-| Campo | Tipo | Padrão | Descrição |
-|-------|------|--------|-----------|
-| `generateImage` | bool | `false` ou env `GENERATE_IMAGE` | Injeta thumbnail PNG 160x160 no G-code |
-
-## Overrides JSON
-
-| Campo | Tipo | Padrão | Descrição |
-|-------|------|--------|-----------|
-| `overrides` | string JSON | `{}` | Overrides por `printer`, `preset`, `filament` |
-
-Exemplo:
-
-```json
-{
-  "preset": {
-    "layer_height": "0.2",
-    "enable_support": true
-  },
-  "filament": {
-    "filament_flow_ratio": ["1"]
-  }
-}
-```
-
-Como multipart:
+- Perfil multipart substitui o nome da mesma categoria. Não resolve herança: envie perfil completo e plano.
+- Overrides são aplicados ao perfil, depois sanitização e controles de preset. `enableSupport`, `brimType` e sequência podem sobrescrever overrides.
+- Apenas quando existem **printer e preset** a API passa `--load-settings` com ambos. Forneça o par para modelos sem configuração própria. Sem perfis, o sucesso depende do que o modelo/CLI já contém.
+- Nenhuma alteração temporária é salva no perfil original.
 
 ```bash
--F 'overrides={"preset":{"layer_height":"0.2"}}'
+-F 'overrides={"preset":{"layer_height":"0.2"},"filament":{"filament_flow_ratio":["1"]}}'
 ```
 
-## Diferença entre `/slice` e `/slice/preview`
+## Limites
 
-| Campo | `/slice` | `/slice/preview` |
-|-------|----------|------------------|
-| `enableSupport` | Respeitado se enviado | Ignorado; preview força `true` |
-| `generateImage` | Respeitado/env | Ignorado; preview sempre gera |
-| `brimType` | Respeitado | Respeitado |
-| `printSequenceByObject` | Respeitado | Respeitado |
-| Retorno | Arquivo G-code/3MF/ZIP | JSON |
+Cada modelo e cada perfil direto multipart é lido com teto de 100.000.000 bytes. O teto de 4.000.000 bytes se aplica ao CRUD/import persistente, não aos perfis diretos do slice. `ParseMultipartForm` usa limiar de memória, **não limite global do corpo**; não há teto agregado de arquivos. A extensão aceita não prova que a geometria ou o JSON será processável.
+
+No preview, suporte e geração de imagem são forçados a true. Use export G-code no preview; `3mf` não é um caminho de extração de thumbnail/suporte validado.

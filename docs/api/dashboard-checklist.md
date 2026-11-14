@@ -1,47 +1,22 @@
-# Checklist de Integração para Dashboard
+# Checklist de cliente/dashboard
 
-## Configuração Inicial
+Esta lista orienta uma integração externa; não descreve um frontend fornecido pelo projeto.
 
-- [ ] Configurar URL base da API
-- [ ] Testar `GET /health`
-- [ ] Carregar lista de printers: `GET /profiles/printers`
-- [ ] Carregar lista de presets: `GET /profiles/presets`
-- [ ] Carregar lista de filaments: `GET /profiles/filaments`
+- [ ] Configurar URL e acesso por rede confiável/proxy autenticado. CORS não autentica.
+- [ ] Conferir health sem confundi-lo com teste de slice.
+- [ ] Carregar listas de perfis salvos, com source/checksum; não depender do catálogo built-in, que retorna 404 no layout vendor normal.
+- [ ] Exigir `name` ASCII válido no upload; avisar que upload sobrescreve.
+- [ ] Oferecer import/update apenas a operadores confiáveis; há risco SSRF.
+- [ ] Resolver perfis nomeados e exibir warnings; não oferecer `resolveProfiles=false` como bypass de herança.
+- [ ] Exigir perfis completos/planos nos uploads diretos de slice.
+- [ ] Diferenciar download de arquivo/ZIP e corpo JSON de erro (`message`).
+- [ ] Exibir unidades: segundos, gramas e milímetros; estimativas não são medições reais.
+- [ ] Avisar que preview roda CLI, força suporte/imagem e não garante necessidade física de suporte.
+- [ ] Não prometer imagem de STEP/3MF ou de toda a mesa com múltiplos modelos.
+- [ ] Tratar 409 e async failed por ocupado; não mostrar fila inexistente.
+- [ ] Usar job específico para polling; guardar download antes de reiniciar servidor.
+- [ ] Apresentar cancelamento como tentativa e conferir estado depois.
+- [ ] Não publicar conteúdo integral de debug/perfis; comparar timestamp do diagnóstico global.
+- [ ] Avisar sobre cache incompleto ao comparar parâmetros; não assumir que toda alteração foi refatiada.
 
-## Upload / Import de Profiles
-
-- [ ] Permitir upload JSON por categoria
-- [ ] Permitir import por URL raw HTTPS
-- [ ] Mostrar `sourceUrl` quando existir
-- [ ] Permitir update-from-source
-- [ ] Permitir delete
-
-## Preview
-
-- [ ] Enviar `POST /slice/preview` após usuário selecionar modelo e profiles
-- [ ] Exibir `thumbnail` base64
-- [ ] Exibir tempo estimado (`printTime`)
-- [ ] Exibir filamento (`filamentUsedG`, `filamentUsedMm`)
-- [ ] Mostrar aviso quando `usesSupport=true`
-
-## Slice Final
-
-- [ ] Enviar `POST /slice`
-- [ ] Permitir controlar `enableSupport`
-- [ ] Permitir controlar `brimType`
-- [ ] Permitir controlar `printSequenceByObject`
-- [ ] Ativar `generateImage=true` quando o G-code precisa de thumbnail
-- [ ] Baixar arquivo retornado (`.gcode`, `.3mf` ou `.zip`)
-
-## Debug e Status
-
-- [ ] Mostrar status de processamento usando `/slice/status`
-- [ ] Em caso de erro, consultar `/slice/debug`
-- [ ] Exibir mensagem amigável baseada em `error` ou `resultJSON.error_string`
-
-## Recomendações
-
-- Sempre usar `resolveProfiles=true` para profiles custom com `inherits`
-- Sempre usar `sanitizeProfiles=true` para profiles custom vindos do Orca GUI
-- Usar `/slice/preview` antes do `/slice` quando quiser detectar suportes
-- Usar `GENERATE_IMAGE=true` no container se todas as chamadas devem gerar thumbnail
+Veja [fluxos](flows.md), [parâmetros](slice-parameters.md) e [limitações](operations.md).

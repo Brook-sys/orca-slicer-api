@@ -1,50 +1,38 @@
-# Erros
+# Erros e diagnóstico
 
-## Formato de Erro
-
-A API retorna erros em JSON:
+Erros dos handlers usam `Content-Type: application/json`:
 
 ```json
-{
-  "error": "Mensagem do erro"
-}
+{"message":"Slicer is busy"}
 ```
 
-## Códigos Comuns
+O campo não é `error`. Respostas de roteamento do Go (404/405 etc.) podem ser texto, e downloads interrompidos podem não permitir substituir a resposta por JSON.
 
-| Código | Mensagem comum | Causa |
-|--------|----------------|-------|
-| `400` | `Invalid multipart form` | Form multipart inválido |
-| `400` | `Model file is required` | Campo `file` ausente |
-| `400` | `Invalid file type` | Arquivo não é STL/STEP/3MF |
-| `400` | `Model file is too large` | Arquivo maior que 100MB |
-| `400` | `Invalid overrides JSON` | Campo `overrides` inválido |
-| `409` | `Slicer is busy` | Já existe slicing em andamento |
-| `408` | `Slicing cancelled or timed out` | Timeout ou cancelamento |
-| `500` | `Slicing failed: ...` | OrcaSlicer retornou erro |
-| `500` | `Image generation failed: ...` | Falha ao gerar thumbnail |
+| HTTP | Situação |
+|---|---|
+| 400 | Multipart/JSON inválido, arquivo ausente/tipo incorreto, limite por arquivo, categoria/nome inválidos, pai ausente/ciclo ou exportType inválido |
+| 404 | Perfil/job/alias não encontrado; listagem built-in sem diretório suportado |
+| 409 | `Slicer is busy`, ou import sem overwrite para perfil existente |
+| 408 | `Slicing cancelled or timed out` durante execução CLI |
+| 500 | CLI, filesystem, download externo ou thumbnail falhou |
+| 503 | Health essencial falhou |
 
-## Erros Específicos de Profiles
+## Perfis 2.5.0
 
-| Mensagem | Causa | Correção |
-|----------|-------|----------|
-| `inherits from X, but parent profile was not found` | Preset depende de built-in/pai não resolvido | Use `resolveProfiles=true` |
-| `The input preset file is invalid and can not be parsed` | Profile custom com campo incompatível | Use `sanitizeProfiles=true` |
-| `The selected printer is not compatible with the process preset` | Compatibilidade printer/preset | Use profiles resolvidos e sanitizados |
-| `Invalid parameter value(s) included in the 3mf file` | Campo inválido no profile/modelo | Consulte `/slice/debug` |
+`parent profile was not found`: conferir raiz `ORCA_PROFILES_PATH=/app/profiles-json/resources/profiles`, disponibilidade do pai e aliases. Ligar `resolveProfiles` não corrige uma raiz errada: nomes já são sempre resolvidos.
 
-## Debug Recomendado
+`The input preset file is invalid and can not be parsed`: inspecionar perfis finais e saída do CLI. Para JSON multipart, envie perfis planos; esse caminho não resolve herança. Sanitização só ajusta `from` e remove um campo conhecido do processo; não é correção universal.
 
-1. Chame `/slice/debug`
-2. Verifique `resultJSON.error_string`
-3. Verifique `preset`, `printer`, `filament`
-4. Refaça a chamada com:
-   - `resolveProfiles=true`
-   - `sanitizeProfiles=true`
-5. Se necessário, use `/profiles/resolve` para ver o profile final
+Warnings de fallback de nomes exigem revisão. Fallback por tokens ambíguo é rejeitado, não escolhe arbitrariamente um candidato. Configure um alias explícito ou use nome inequívoco após conferir os perfis.
 
-## Exemplo
+## Posicionamento
 
-```bash
-curl http://localhost:3000/slice/debug
-```
+Foi observado código CLI `-102` com um cubo na origem fora da área imprimível usando `arrange=false`; o mesmo caso passa com `arrange=true`. Um STL de 5.952 triângulos também passou com `arrange=false`. O default continua **false** e não foi demonstrada regressão geral nele. Revise escala, orientação, coordenadas e dimensões da mesa; arrange não corrige todo erro geométrico.
+
+## Sequência de diagnóstico
+
+1. Registrar HTTP e `message` sem confundir corpo JSON de erro com G-code.
+2. Conferir `/health`, versão efetiva e raiz JSON.
+3. Inspecionar `/profiles/resolve`: resultado e warnings.
+4. Consultar `/slice/debug`: `output`, `slicerError`, `resultJson.error_string` e perfis finais.
+5. Reproduzir com modelo sintético e cache de teste controlado. Não publicar logs ou perfis pessoais.

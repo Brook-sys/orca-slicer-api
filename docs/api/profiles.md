@@ -1,125 +1,42 @@
-# Profiles
+# Perfis JSON
 
-Profiles são arquivos JSON salvos em `DATA_PATH`.
+## Armazenamento e validação
 
-## Categorias
+Categorias: `printers` (machine), `presets` (process), `filaments` (filament). Perfis de usuário ficam em `DATA_PATH/{category}/{name}.json`.
 
-| Categoria | Uso |
-|-----------|-----|
-| `printers` | Printer / machine profile |
-| `presets` | Process / print settings |
-| `filaments` | Filament settings |
+- `name` é obrigatório, com expressão `^[a-zA-Z0-9_-]+$`; não é inferido do arquivo.
+- Máximo de **4.000.000 bytes** por perfil salvo/importado.
+- A validação aceita JSON sintaticamente válido; não valida esquema Orca, compatibilidade física ou comandos de G-code.
+- Upload/import não toleram BOM UTF-8. O leitor de resolução em disco o remove, mas isso não muda a validação de entrada.
 
-## `GET /profiles/{category}`
+## Operações
 
-Lista profiles de uma categoria.
+| Método e rota | Entrada | Resposta |
+|---|---|---|
+| `GET /profiles/{category}` | Categoria | Array com `name`, `size`, `checksum` SHA-256, `updatedAt` RFC3339 e `sourceUrl` opcional |
+| `GET /profiles/{category}/{name}` | Nome salvo | Conteúdo JSON original |
+| `POST /profiles/{category}/upload` | Multipart: `file` terminado em `.json`, `name` obrigatório | 201, `{name,checksum,updated}`; upload retorna `updated:false` mesmo tendo gravado |
+| `POST /profiles/{category}/import-url` | JSON `{name,url,overwrite}` | 201, `{name,checksum,sourceUrl,updated}` |
+| `POST /profiles/{category}/{name}/update-from-source` | Sem corpo necessário | 200, mesma estrutura de import; `updated:false` se checksum da fonte não mudou |
+| `DELETE /profiles/{category}/{name}` | Categoria/nome | 204; remove também `.source.json` |
 
-### Path Params
-
-| Nome | Tipo | Obrigatório | Descrição |
-|------|------|------------:|-----------|
-| `category` | string | Sim | `printers`, `presets` ou `filaments` |
-
-### Resposta
-
-```json
-[
-  {
-    "name": "0_2mm_standard_0_4_ONP",
-    "size": 12345,
-    "checksum": "sha256...",
-    "updatedAt": "2026-07-01T00:00:00Z",
-    "sourceUrl": "https://raw.githubusercontent.com/..."
-  }
-]
-```
-
-### Exemplo
+Upload substitui um perfil existente. Import exige `overwrite:true` para substituir; caso contrário retorna 409. Import grava `{name}.source.json` com URL/checksum/data. Update exige source salva (400 se ausente), baixa novamente e compara o checksum com o registro da fonte.
 
 ```bash
-curl http://localhost:3000/profiles/presets
-```
+curl --fail-with-body http://localhost:3000/profiles/presets/upload \
+  -F file=@preset.json -F name=meu_processo
 
-## `GET /profiles/{category}/{name}`
-
-Retorna um profile JSON salvo.
-
-### Exemplo
-
-```bash
-curl http://localhost:3000/profiles/presets/0_2mm_standard_0_4_ONP
-```
-
-## `POST /profiles/{category}/upload`
-
-Faz upload de um profile JSON.
-
-### Form Fields
-
-| Campo | Tipo | Obrigatório | Descrição |
-|-------|------|------------:|-----------|
-| `file` | file JSON | Sim | Profile JSON |
-| `name` | string | Não | Nome salvo. Se omitido, usa o nome do arquivo |
-
-### Exemplo
-
-```bash
-curl -X POST http://localhost:3000/profiles/presets/upload \
-  -F file=@preset.json \
-  -F name=meu_preset
-```
-
-## `POST /profiles/{category}/import-url`
-
-Importa profile a partir de URL HTTPS raw.
-
-### Body
-
-```json
-{
-  "url": "https://raw.githubusercontent.com/user/repo/main/profile.json",
-  "name": "meu_profile"
-}
-```
-
-### Regras
-
-- URL deve ser HTTPS
-- Conteúdo deve ser JSON válido
-- Cria `{name}.source.json` para update posterior
-
-### Exemplo
-
-```bash
-curl -X POST http://localhost:3000/profiles/presets/import-url \
+curl --fail-with-body http://localhost:3000/profiles/presets/import-url \
   -H 'Content-Type: application/json' \
-  -d '{"url":"https://raw.githubusercontent.com/.../preset.json","name":"meu_preset"}'
+  -d '{"name":"meu_processo","url":"https://example.org/preset.json","overwrite":true}'
 ```
 
-## `POST /profiles/{category}/{name}/update-from-source`
+A URL é ilustrativa: forneça um endpoint que realmente devolva JSON raw. O cliente tem timeout de 20 segundos e aceita URL inicial HTTPS; não há allowlist de destinos nem proteção SSRF completa. Restrinja acesso e egress.
 
-Atualiza um profile importado usando a URL salva em `{name}.source.json`.
+## Built-ins: resolução não é listagem
 
-### Exemplo
+`ORCA_PROFILES_PATH` aponta para a raiz dos JSON de fabricante. Para 2.5.0 na imagem: `/app/profiles-json/resources/profiles`, obtida do repositório upstream na mesma tag; os `.opc` originais continuam no AppImage.
 
-```bash
-curl -X POST http://localhost:3000/profiles/presets/meu_preset/update-from-source
-```
+`GET /profiles/builtins/{category}` procura somente `{raiz}/{category}` ou `{raiz}/{machine|process|filament}`, listando apenas JSON diretamente nessa pasta. Retorna itens `{name,path}`. **Não percorre fabricantes/subpastas**: no layout vendor normal do contêiner JSON (`{raiz}/Elegoo/machine`, por exemplo), retorna 404 mesmo com resolução por nome funcional. Em layouts rasos alternativos, a lista ainda pode ser parcial. Não use essa rota como catálogo completo nem como teste definitivo de disponibilidade de perfis.
 
-## `DELETE /profiles/{category}/{name}`
-
-Remove profile e source tracking associado.
-
-### Exemplo
-
-```bash
-curl -X DELETE http://localhost:3000/profiles/presets/meu_preset
-```
-
-## Erros Comuns
-
-| Status | Causa |
-|--------|-------|
-| `400` | categoria inválida, JSON inválido, URL inválida |
-| `404` | profile não encontrado |
-| `500` | erro de filesystem ou download |
+A resolução por nome faz busca recursiva e tem regras próprias: veja [resolve e aliases](resolve-aliases.md).

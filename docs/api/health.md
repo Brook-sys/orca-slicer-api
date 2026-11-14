@@ -1,58 +1,24 @@
-# Healthcheck
+# Health e métricas
 
 ## `GET /health`
 
-Verifica disponibilidade da API, filesystem e OrcaSlicer.
+Retorna 200 com `status:healthy`, ou 503 com `status:unhealthy` se falhar um check essencial: existência/escrita de `DATA_PATH`, configuração/existência/permissão executável de `ORCASLICER_PATH`.
 
-## Resposta
-
-```json
-{
-  "status": "healthy",
-  "dataPath": "/app/data",
-  "dataPathExists": true,
-  "dataPathWritable": true,
-  "orcaSlicerPath": "/app/squashfs-root/AppRun",
-  "orcaSlicerConfigured": true,
-  "orcaSlicerExists": true,
-  "orcaSlicerExecutable": true,
-  "orcaProfilesPath": "/app/squashfs-root/resources/profiles",
-  "orcaProfilesPathExists": true,
-  "orcaVersion": "2.4.1",
-  "generateImage": true,
-  "resolveProfiles": true,
-  "sanitizeProfiles": true
-}
-```
-
-## Campos
-
-| Campo | Tipo | Descrição |
-|-------|------|-----------|
-| `status` | string | `healthy` ou `unhealthy` |
-| `dataPath` | string | Diretório de dados configurado |
-| `dataPathExists` | bool | Se o diretório existe |
-| `dataPathWritable` | bool | Se a API consegue escrever no diretório |
-| `orcaSlicerPath` | string | Caminho do AppRun/binário |
-| `orcaSlicerConfigured` | bool | Se `ORCASLICER_PATH` foi configurado |
-| `orcaSlicerExists` | bool | Se o binário existe |
-| `orcaSlicerExecutable` | bool | Se o binário tem permissão de execução |
-| `orcaProfilesPath` | string | Diretório de built-ins do OrcaSlicer |
-| `orcaProfilesPathExists` | bool | Se o diretório de built-ins existe |
-| `orcaVersion` | string | Versão configurada em `ORCA_VERSION` |
-| `generateImage` | bool | Se `GENERATE_IMAGE` está ativo no processo |
-| `resolveProfiles` | bool | Se `RESOLVE_PROFILES` está ativo no processo |
-| `sanitizeProfiles` | bool | Se `SANITIZE_PROFILES` está ativo no processo |
-
-## Status HTTP
-
-| Status | Significado |
-|--------|-------------|
-| `200` | API saudável |
-| `503` | Alguma verificação essencial falhou |
-
-## Exemplo
+Campos: `status`, `dataPath`, `dataPathExists`, `dataPathWritable`, `orcaSlicerPath`, `orcaSlicerConfigured`, `orcaSlicerExists`, `orcaSlicerExecutable`, `orcaProfilesPath`, `orcaProfilesPathExists`, `orcaVersion`, `generateImage`, `resolveProfiles`, `sanitizeProfiles`.
 
 ```bash
-curl http://localhost:3000/health
+curl --fail-with-body http://localhost:3000/health
 ```
+
+## O que não comprova
+
+- `orcaVersion` vem de `ORCA_VERSION`, não da leitura do executável. Confira também o banner de `AppRun --help`.
+- `orcaProfilesPathExists` é informativo: **não participa da decisão healthy/unhealthy**. Health 200 pode coexistir com raiz JSON errada ou pais indisponíveis.
+- Não executa CLI, resolve perfis ou valida slice/impressão. Uma permissão de execução não garante bibliotecas ou arquitetura corretas.
+- O teste de escrita cria/remove um arquivo temporário no diretório de dados.
+
+Na imagem 2.5.0, a raiz JSON é `/app/profiles-json/resources/profiles`; o AppImage original mantém os próprios recursos em separado.
+
+## `GET /metrics`
+
+Retorna **JSON**, não Prometheus: `uptime_seconds`, `goroutines`, `memory_alloc_mb`, estatísticas `jobs` e indicador `cache_enabled` quando configurados. Memória é do runtime Go, não consumo total do CLI. Não há contadores de hit/miss nem percentis de latência nesse endpoint. Veja [operação](operations.md).

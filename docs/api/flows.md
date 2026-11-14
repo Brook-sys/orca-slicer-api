@@ -1,115 +1,31 @@
-# Fluxos Recomendados para Dashboard
+# Fluxos de integração
 
-## Fluxo 1 — Preview antes do Slice Final
+## Configuração e primeiro slice
 
-Use quando o dashboard precisa mostrar thumbnail e avisar sobre suporte.
+1. Conferir health, executável e raiz JSON. Health 200 sozinho não prova resolução/slicing.
+2. Cadastrar perfis compatíveis; preservar backup antes de sobrescrever.
+3. Resolver nomes com `/slice/resolve-profiles`; mostrar warnings ao operador.
+4. Enviar um modelo sintético com os três perfis selecionados.
+5. Conferir HTTP, arquivo, estimativas e movimentos antes de imprimir.
 
-### 1. Gerar Preview
+Exemplos completos em [examples.md](examples.md).
 
-```bash
-curl -X POST http://localhost:3000/slice/preview \
-  -F file=@model.stl \
-  -F printer=Elegoo_Neptune_4_0_4_nozzle_-OpenNept4une \
-  -F preset=0_2mm_standard_0_4_ONP \
-  -F filament=PLA_personalizado1_ONP \
-  -F resolveProfiles=true \
-  -F sanitizeProfiles=true
-```
+## Preview opcional
 
-Resposta:
+Executa slice real, força suporte e imagem. Exiba `usesSupport` como observação dos marcadores do resultado, não como garantia de imprimibilidade. O thumbnail usa STL/primeiro modelo. Pode custar outro slice e bloquear a instância.
 
-```json
-{
-  "usesSupport": true,
-  "printTime": 12450.3,
-  "filamentUsedG": 18.7,
-  "filamentUsedMm": 12450.3,
-  "thumbnail": "iVBORw0KGgo..."
-}
-```
+## Job async
 
-### 2. Decidir no Dashboard
+1. Enviar multipart para `/slice/async`.
+2. Receber 202/id, sem presumir que há capacidade reservada.
+3. Fazer polling moderado de `/jobs/{id}` até completed/failed.
+4. Após completed, baixar primeiro arquivo por `/download` e guardar no cliente.
+5. Se solicitado, DELETE tenta cancelar; confirme estado posteriormente.
 
-Se `usesSupport=true`:
+Não há fila de espera nem recuperação de resultados após restart. Não usar `/slice/status` como substituto do estado do job específico.
 
-- Mostrar aviso: "Este modelo gera suportes com o profile atual"
-- Permitir continuar com suportes ativados
-- Permitir desativar suportes manualmente
+## Falhas e repetição
 
-### 3. Executar Slice Final
+Não repetir automaticamente POST após timeout sem verificar o estado conhecido: pode duplicar trabalho. Em 409, informar ocupado e deixar o cliente controlar nova tentativa. Em erro de perfil, resolver primeiro e conferir raiz/pai/aliases. `/slice/debug` é global: comparar timestamps.
 
-```bash
-curl -X POST http://localhost:3000/slice \
-  -F file=@model.stl \
-  -F printer=Elegoo_Neptune_4_0_4_nozzle_-OpenNept4une \
-  -F preset=0_2mm_standard_0_4_ONP \
-  -F filament=PLA_personalizado1_ONP \
-  -F resolveProfiles=true \
-  -F sanitizeProfiles=true \
-  -F enableSupport=true \
-  -F brimType=true \
-  -F generateImage=true \
-  -o result.gcode
-```
-
-## Fluxo 2 — Slice Direto com Controles
-
-Use quando o usuário já escolheu as opções.
-
-```bash
-curl -X POST http://localhost:3000/slice \
-  -F file=@model.stl \
-  -F printer=Elegoo_Neptune_4_0_4_nozzle_-OpenNept4une \
-  -F preset=0_2mm_standard_0_4_ONP \
-  -F filament=PLA_personalizado1_ONP \
-  -F enableSupport=false \
-  -F brimType=false \
-  -F printSequenceByObject=false \
-  -F generateImage=true \
-  -o result.gcode
-```
-
-## Fluxo 3 — Profiles Multipart sem Salvar
-
-Use quando o dashboard fornece profiles temporários.
-
-```bash
-curl -X POST http://localhost:3000/slice \
-  -F file=@model.stl \
-  -F printerProfile=@printer.json \
-  -F presetProfile=@preset.json \
-  -F filamentProfile=@filament.json \
-  -F enableSupport=false \
-  -F generateImage=true \
-  -o result.gcode
-```
-
-## Fluxo 4 — Diagnóstico de Preset
-
-Use para verificar resolução de `inherits` sem fatiar.
-
-```bash
-curl -X POST http://localhost:3000/profiles/resolve \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "category": "presets",
-    "name": "0_2mm_standard_0_4_ONP",
-    "overrides": {}
-  }'
-```
-
-## Fluxo 5 — Debug após Erro
-
-```bash
-curl http://localhost:3000/slice/debug
-```
-
-Verifique:
-
-- `command`
-- `args`
-- `preset`
-- `printer`
-- `filament`
-- `output`
-- `resultJSON.error_string`
+Quando variar overrides ou parâmetros para comparação, controlar o cache em ambiente isolado; a chave atual pode ignorar a variação. Não tratar um hit como comprovação de novo slice.

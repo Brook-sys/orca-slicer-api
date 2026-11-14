@@ -1,142 +1,60 @@
-# Slicer API Agent Notes
+# Orientações para agentes
 
-## Stack (real)
+## Escopo e fontes de verdade
 
-- **Go 1.23**, apenas biblioteca padrão. **Zero dependências externas** — não existe
-  `go.sum` e não existe motivo para `go mod tidy`.
-- Módulo: `github.com/Brook-sys/orca-slicer-api`.
-- ⚠️ Este arquivo já afirmou FastAPI/Python/uv/PEP-668. **É falso.** Não há Python,
-  pip, uv, venv nem requirements neste projeto. O que existia antes era outra pilha;
-  o código atual é Go desde o commit inicial.
+- Projeto Go 1.23, módulo `github.com/Brook-sys/orca-slicer-api`, somente stdlib. Não há frontend, Python ou banco de dados.
+- Leia o código antes de documentar comportamento: rotas em `cmd/server/main.go`, configuração em `internal/config/config.go`, contratos nos handlers e structs.
+- Mantenha `README.md`, `docs/API.md`, `docs/api/` e a especificação embutida em `internal/docs/docs.go` coerentes quando o escopo permitir. A especificação é manual, não gerada dos handlers.
+- Funcionalidades novas devem ser **planejadas apenas em `docs/ROADMAP.md`**, sem implementação ou promessa de disponibilidade, salvo autorização explícita posterior.
 
-## Layout
+## Mapa do código
 
-```
-cmd/server/main.go          rotas e wiring
-internal/config             variáveis de ambiente (ORCA_VERSION, DATA_PATH, ...)
-internal/health             GET /health
-internal/metrics            GET /metrics (Prometheus)
-internal/jobs               store de jobs assíncronos
-internal/profiles           CRUD de perfis em disco (upload/import-url/delete)
-internal/slicer              o motor:
-  service.go                monta os argumentos do CLI e executa o AppRun
-  handler.go                handlers HTTP (sync, async, preview)
-  overrides.go              resolve herança de perfis e aplica overrides
-  thumbnail.go / metadata.go / state.go / response.go / support.go / types.go
-internal/docs               OpenAPI + Swagger UI embutidos no binário
-docs/api/*.md               documentação humana (manter em sincronia com as rotas)
-Dockerfile                  build multi-stage: binário Go + AppImage do Orca extraído
-.github/workflows/          ci.yml, lint.yml, container.yml
-```
+| Caminho | Responsabilidade |
+|---|---|
+| `cmd/server/main.go` | Wiring, rotas, limpeza periódica |
+| `internal/config` | Ambiente e defaults |
+| `internal/httpx` | CORS, logs e erros JSON |
+| `internal/health`, `internal/metrics` | Checks de disco/executável e métricas JSON |
+| `internal/profiles` | CRUD, import HTTPS e source tracking |
+| `internal/slicer` | CLI, resolução, aliases, cache, thumbnail, estado/debug |
+| `internal/jobs` | Jobs em memória e metadados persistidos |
+| `internal/docs` | OpenAPI e Swagger UI |
+| `Dockerfile` | Go, JSON upstream, AppImage e runtime Ubuntu |
+| `.github/workflows` | Testes, lint e imagem |
 
-## Comandos
+## Correção 2.5.0 em andamento
+
+Diagnóstico verificado: o AppImage 2.5.0 inspecionado possui 6 JSON e 72 `.opc` internos (cereal); o repositório upstream da mesma tag possui 14.813 JSON. Não tratar `.opc` como ZIP nem implementar conversor especulativo.
+
+O stage `vendorprofiles` obtém JSON da mesma tag e preserva o prefixo `resources/profiles`. A raiz correta é **`/app/profiles-json/resources/profiles`** em `ORCA_PROFILES_PATH`. Não substituir os recursos originais do AppImage.
+
+`loadSelectedProfile` sempre resolve perfis nomeados, mesmo com `resolveProfiles=false`. A resolução aplica herança, overrides e remove `inherits`. Perfis diretos multipart não são achatados automaticamente. BOM UTF-8 é tolerado pelo leitor em disco, não por todas as entradas HTTP. Fallback por tokens equivalentes é último recurso, rejeita ambiguidades e retorna warning nos endpoints de resolução quando usado; revise o resultado. Regressões da atualização ficam em `internal/slicer/overrides_250_test.go`.
+
+O AppImage original com três perfis achatados pela API fatiou cubo e STL de 5.952 triângulos, inclusive este último com arrange=false. Há diferenças de camadas/estimativas frente à referência 2.4.0; não afirmar equivalência ou impressão física validada. A correção foi enviada para build. Isso **não** comprova fluxo completo HTTP, imagem final, publicação concluída ou deploy. Evidências genéricas estão em `docs/api/overview.md`.
+
+## Versão e plataforma
+
+Mantenha alinhados `ARG ORCA_VERSION` no Dockerfile e `env.ORCA_VERSION` em `container.yml`. `/health` informa o valor do ambiente, não detecta a versão. O banner de `AppRun --help` permite conferir o executável; não usar `--version` como check suportado.
+
+O asset usado é amd64 e a imagem publicada é **linux/amd64-only**. `ci.yml` também usa somente amd64, com `push:false`; `container.yml` é o único publicador. Um build Go ARM64 ou manifesto multi-arch não torna o AppImage compatível com ARM. Não anunciar suporte ARM64.
+
+## Validação
 
 ```bash
-go test ./...            # gate principal; tudo passa apenas com stdlib
-go build ./cmd/server    # binário
-gofmt -l .               # CI não roda gofmt, mas o diff fica sujo sem ele
+go test ./...
 go vet ./...
+gofmt -l .
+go build -o /tmp/orca-slicer-api ./cmd/server
 ```
 
-- **Lint:** o CI usa `golangci-lint` **v1.60 sem `.golangci.yml`** (defaults). Um
-  `golangci-lint` v2.x instalado localmente **não é equivalente** — ele exige
-  configuração e pode falhar por ausência de `.golangci.yml`. Em dúvida, confie no
-  job `lint.yml` do CI em vez do binário local.
+Esses gates não substituem integração com o CLI. Antes de considerar uma atualização validada, use dados sintéticos e volume isolado: health + banner, resolução de herança, slice real com flag true/false, metadados, thumbnails, preview, async/download/cancelamento e erros de concorrência. Veja `docs/api/operations.md`.
 
-## Versão do OrcaSlicer — a armadilha
+Limitações que não podem ser ocultadas: não há autenticação, fila de espera ou isolamento por usuário; cache não cobre todos os inputs; metadados de jobs não recuperam resultados após restart; built-ins não têm listagem recursiva completa; não há limite agregado de upload. `/metrics` retorna JSON, não Prometheus.
 
-A versão vive em **dois** lugares e os dois precisam mudar juntos:
+## Privacidade e alterações
 
-| Onde | O quê |
-| --- | --- |
-| `.github/workflows/container.yml` | `env: ORCA_VERSION:` (usado nos nomes das tags da imagem) |
-| `Dockerfile` | `ARG ORCA_VERSION=...` (usado na URL do AppImage, no label e no `ENV`) |
-
-`GET /health` devolve `orcaVersion` **lido da variável de ambiente `ORCA_VERSION`**,
-não do binário. Se os dois lugares divergirem, o endpoint **mente**.
-
-Para saber a versão real dentro do contêiner:
-
-```bash
-/app/squashfs-root/AppRun --help     # a linha de uso imprime "OrcaSlicer-<versão>"
-```
-
-`--version` **não existe** (resposta: `Invalid option --version`). Use o banner de uso.
-
-O nome do asset é derivado da versão:
-`OrcaSlicer_Linux_AppImage_Ubuntu2404_V${ORCA_VERSION}.AppImage` — a build quebra se o
-upstream (SoftFever/OrcaSlicer) renomear, mover ou apagar o asset. Atualizar a versão
-portanto atualiza uma dependência de rede em tempo de build, não só um número.
-
-### Por que o repo está em 2.4.1 (testado em 2026-11-14)
-
-A 2.5.0 foi buildada, publicada e **testada contra o uso real**: o bump foi
-revertido porque quebra o faturamento. Registro para ninguém tentar de novo sem
-resolver isto primeiro.
-
-O que a 2.5.0 mudou por dentro: os perfis de fabricante deixaram de ser arquivos
-`.json` e passaram a vir dentro de arquivos **`.opc`** (Orca Profile Collection,
-formato binário, magic `ZCRO`, um por fabricante: `Elegoo.opc`, `BBL.opc`, ...).
-Em 2.4.1 existia, por exemplo,
-`resources/profiles/Elegoo/machine/EN4SERIES/Elegoo Neptune 4 0.4 nozzle.json`; em
-2.5.0 esse caminho não existe mais — só `Elegoo.opc`.
-
-Consequência medida com um perfil de impressora que declara
-`"inherits": "Elegoo Neptune 4 0.4 nozzle"`:
-
-- com `resolveProfiles=true` → a própria resolução falha:
-  `parent profile was not found` (HTTP 400);
-- com `resolveProfiles=false` → quem falha é o CLI:
-  `can not resolve preset .../printer.json` e
-  `The input preset file is invalid and can not be parsed` (HTTP 500).
-
-Ou seja: qualquer perfil de usuário que dependa de um perfil de fabricante embutido
-para de fatiar. Para rodar 2.5.0 seria preciso uma de:
-
-1. ler `.opc` (formato ainda não documentado; engenharia reversa do `ZCRO`);
-2. extrair os `.opc` para JSON em tempo de build (mesmo problema do item 1);
-3. tornar os perfis de usuário auto-suficientes (sem `inherits` de embutido),
-   o que exige reconfigurar os perfis de quem usa e muda o significado de
-   `resolveProfiles`.
-
-`GET /profiles/builtins/{category}` também está quebrado **desde antes** do bump:
-responde `failed to read profiles: open .../profiles/printers: no such file or
-directory` em 2.4.1 e em 2.5.0. Não depende da versão e não foi corrigido.
-
-## Publicação da imagem
-
-- `container.yml`: dispara em push em `main`, tag `v*` e `workflow_dispatch`. Publica
-  em `ghcr.io/brook-sys/orca-slicer-api` as tags `main`, `sha-<7>`, `latest`,
-  `orca<versão>` e `<tag>-orca<versão>`. **Somente `linux/amd64`.**
-- Rollback: as tags `orca<versão>` e `sha-<commit>` já publicadas servem de alvo fixo.
-- ⚠️ `ci.yml` tem um job `docker` com `platforms: linux/amd64,linux/arm64`. Ele builda
-  arm64, mas o `Dockerfile` **sempre baixa o AppImage amd64** — a imagem arm64 resultado
-  não executa em ARM. Buildar sem quebrar dá a ilusão de suporte multi-arch que não
-  existe. Para suporte real seria preciso escolher o asset por `TARGETARCH`
-  (`..._aarch64_...`, que o upstream publica).
-
-## Como testar uma imagem nova (não há Docker na máquina de desenvolvimento)
-
-A build só acontece no CI. Para exercitar a imagem publicada:
-
-1. suba um contêiner com **volume de dados próprio** e uma porta que não conflita com
-   a do stack em produção;
-2. `GET /health` — confira `orcaVersion` **e** o banner do AppRun;
-3. suba os perfis reais: `POST /profiles/{categoria}/upload` (multipart com `file` e
-   `name`) — **o nome do arquivo do `file` precisa terminar em `.json`**, senão o
-   servidor responde `400 Invalid file type`;
-4. fatie de verdade: `POST /slice` com `file`, `printer`, `preset`, `filament`,
-   `resolveProfiles`, `sanitizeProfiles`, `generateImage`. Confira o gcode, os
-   metadados (`; filament used [g]`, `; estimated printing time`) e os thumbnails
-   injetados (`; thumbnail begin`).
-
-Perfis do usuário e dados de ambiente (host, IP, portas, volumes) **nunca** entram neste
-arquivo nem nos docs versionados: vão para o `LOCAL.md` (ignorado pelo git).
-
-## Regras de trabalho
-
-- Commits em português, atômicos, padrão convencional (`feat:`, `fix:`, `docs:`).
-- `docs/api/*.md` contêm exemplos com versão do Orca e nomes de perfil: ao mudar de
-  versão, revisar os exemplos para não documentar uma versão que não roda.
-- Nenhuma dependência externa: se precisar de uma, justificar — hoje o projeto é
-  deliberativamente stdlib-only.
+- Nunca versionar assets reais de teste, perfis pessoais, logs, IPs privados, hostnames, tokens ou detalhes de infraestrutura. Use exemplos genéricos e dados sintéticos; detalhes operacionais ficam em arquivo local ignorado.
+- Não apagar nem sobrescrever trabalho existente sem investigar; outras sessões podem estar editando o repositório.
+- Respeite o escopo atribuído. Em tarefa somente de documentação, não editar Go, Dockerfile ou workflows.
+- Não fazer commit, push, publicação ou deploy sem a autorização aplicável. Publicação não é sinônimo de deploy.
+- Antes de entregar, revisar diff, links, contratos HTTP e vazamentos. Não afirmar produção validada com base apenas em testes unitários ou healthcheck.

@@ -1,128 +1,61 @@
-# Resolve e Aliases
+# Resolução e aliases
 
-## Resolve de Profile
+## `POST /profiles/resolve`
 
-### `POST /profiles/resolve`
+Entrada JSON:
 
-Resolve um único profile aplicando:
+```json
+{"category":"presets","name":"meu_processo","overrides":{"layer_height":"0.2"}}
+```
 
-1. Overrides enviados
-2. `inherits` recursivo
-3. Busca em profiles salvos (`DATA_PATH`)
-4. Busca em built-ins (`ORCA_PROFILES_PATH`)
-5. Aliases configurados
-
-### Body
+Resposta ilustrativa (o conteúdo depende do perfil):
 
 ```json
 {
   "category": "presets",
-  "name": "0_2mm_standard_0_4_ONP",
-  "overrides": {
-    "layer_height": "0.2"
-  }
+  "name": "meu_processo",
+  "resolved": {"name":"meu_processo","layer_height":"0.2"},
+  "warnings": []
 }
 ```
 
-### Resposta
+Não existe campo `sources` na resposta. `warnings` inclui chaves de override inexistentes na base e uso do fallback por tokens.
 
-```json
-{
-  "category": "presets",
-  "name": "0_2mm_standard_0_4_ONP",
-  "resolved": {
-    "type": "process",
-    "layer_height": "0.2"
-  },
-  "sources": []
-}
-```
+### Ordem e regras
 
-### Exemplo
+1. Busca em `DATA_PATH` por nome/arquivo sanitizado e identidades internas, considerando aliases.
+2. Busca em `ORCA_PROFILES_PATH`, incluindo pastas de categoria e busca recursiva vendor.
+3. Somente se as buscas anteriores falharem, tenta nome com tokens normalizados equivalentes. Rejeita candidatos ambíguos em vez de escolher o primeiro. Gera warning quando usado; não prova equivalência de configurações.
+4. Resolve `inherits` string recursivamente; pai ausente retorna 400, ciclo retorna 400, perfil inicial não encontrado retorna 404.
+5. Mescla pai e filho (filho prevalece), depois overrides (prevalecem sobre ambos). Objetos têm merge recursivo; arrays/escalares são substituídos.
+6. Remove `inherits` do resultado, inclusive se enviado em overrides.
+
+O leitor de arquivos tolera prefixo BOM UTF-8. Arquivos inválidos encontrados durante varredura são ignorados; um candidato direto inválido pode retornar erro. A busca não é um validador de esquema Orca nem resolve ambiguidades semânticas entre perfis parecidos.
+
+## `POST /slice/resolve-profiles`
 
 ```bash
-curl -X POST http://localhost:3000/profiles/resolve \
+curl --fail-with-body http://localhost:3000/slice/resolve-profiles \
   -H 'Content-Type: application/json' \
-  -d '{"category":"presets","name":"0_2mm_standard_0_4_ONP","overrides":{}}'
+  -d '{"printer":"minha_impressora","preset":"meu_processo","filament":"meu_filamento","overrides":{"preset":{"layer_height":"0.2"}}}'
 ```
 
-## Resolve dos Profiles de Slicing
+Retorna objetos opcionais `printer`, `preset`, `filament`, cada um com `category`, `name`, `resolved`, `warnings`. Só processa nomes não vazios. Não executa CLI nem aplica toda a preparação de slicing (como sanitização e controles de suporte/brim/sequência).
 
-### `POST /slice/resolve-profiles`
+## Mudança na 2.5.0
 
-Resolve os profiles que seriam usados em um slicing, sem executar o OrcaSlicer.
+Perfis **nomeados** enviados ao slicing são sempre resolvidos e achatados pela API, mesmo se `resolveProfiles=false`. A flag permanece no contrato por compatibilidade; não é mais um bypass de herança. Warnings são expostos pelos endpoints de resolução, não como resposta adicional no download de slicing: inspecione-os antes.
 
-### Body
+Perfis enviados diretamente como `printerProfile`, `presetProfile`, `filamentProfile` **não** passam por essa resolução. Forneça JSON completo/sem dependência de `inherits`.
+
+## Aliases persistidos
+
+- `GET /profile-aliases`: array de `{category,from,to}`.
+- `POST /profile-aliases`: grava/atualiza um alias e devolve a lista completa (200).
+- `DELETE /profile-aliases/{category}/{from}`: remove e devolve lista (200); 404 se ausente. Faça URL-encoding dos componentes.
 
 ```json
-{
-  "printer": "Elegoo_Neptune_4_0_4_nozzle_-OpenNept4une",
-  "preset": "0_2mm_standard_0_4_ONP",
-  "filament": "PLA_personalizado1_ONP",
-  "overrides": {
-    "preset": {
-      "enable_support": true
-    }
-  }
-}
+{"category":"presets","from":"nome_antigo","to":"meu_processo"}
 ```
 
-### Resposta
-
-```json
-{
-  "printer": { "resolved": {} },
-  "preset": { "resolved": {} },
-  "filament": { "resolved": {} }
-}
-```
-
-## Aliases
-
-Aliases ajudam a mapear nomes custom para nomes built-in do OrcaSlicer.
-
-Exemplo:
-
-```txt
-Neptune4 -> N4
-Neptune 4 -> N4
-Neptune-4 -> N4
-```
-
-## `GET /profile-aliases`
-
-Lista aliases configurados.
-
-```bash
-curl http://localhost:3000/profile-aliases
-```
-
-## `POST /profile-aliases`
-
-Cria ou atualiza alias.
-
-### Body
-
-```json
-{
-  "category": "printers",
-  "from": "Neptune4",
-  "to": "N4"
-}
-```
-
-### Exemplo
-
-```bash
-curl -X POST http://localhost:3000/profile-aliases \
-  -H 'Content-Type: application/json' \
-  -d '{"category":"printers","from":"Neptune4","to":"N4"}'
-```
-
-## `DELETE /profile-aliases/{category}/{from}`
-
-Remove alias.
-
-```bash
-curl -X DELETE http://localhost:3000/profile-aliases/printers/Neptune4
-```
+O arquivo é `DATA_PATH/profile-aliases.json`. Os três campos devem ser não vazios; use as categorias reconhecidas. Alias é candidato adicional, não renomeia arquivo nem representa encadeamento recursivo garantido. Existem também substituições conhecidas `Neptune4`, `Neptune 4`, `Neptune-4` → `N4` na formação de candidatos.

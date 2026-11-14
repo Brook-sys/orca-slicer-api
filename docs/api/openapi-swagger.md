@@ -1,61 +1,18 @@
-# OpenAPI e Swagger
+# OpenAPI e Swagger UI
 
-A API expõe documentação interativa via OpenAPI 3.0.
-
-## Endpoints
-
-| Endpoint | Descrição |
-|----------|-----------|
-| `GET /openapi.json` | Especificação OpenAPI em JSON |
-| `GET /api-docs` | Swagger UI |
-
-## Usando Swagger UI
-
-Abra no navegador:
-
-```txt
-http://localhost:3000/api-docs
-```
-
-A interface permite:
-
-- Ver todos os endpoints
-- Ver schemas de request/response
-- Testar chamadas simples
-- Consultar exemplos de erro
-
-## Baixar OpenAPI JSON
+- `GET /openapi.json`: especificação OpenAPI 3.0.3, mantida manualmente em `internal/docs/docs.go`.
+- `GET /api-docs`: HTML da Swagger UI. CSS/JavaScript vêm de CDN externa (`unpkg.com`); uso offline/rede restrita pode não funcionar.
 
 ```bash
-curl http://localhost:3000/openapi.json -o openapi.json
+curl --fail-with-body http://localhost:3000/openapi.json -o openapi.json
 ```
 
-## Gerar Cliente a partir do OpenAPI
+A versão `info.version` da especificação não identifica necessariamente o OrcaSlicer. O esquema não é gerado dos handlers nem garante cobertura atualizada de todas as rotas.
 
-Exemplo com `openapi-generator`:
+## Divergências conhecidas
 
-```bash
-openapi-generator-cli generate \
-  -i http://localhost:3000/openapi.json \
-  -g typescript-fetch \
-  -o ./orca-api-client
-```
+A especificação ainda contém exemplos/schema de erro com `error`, mas os handlers retornam **`message`**. Também descreve `resolveProfiles` como opt-in, enquanto o código atual sempre resolve perfis nomeados. O inventário completo e os contratos atuais estão em [rotas](endpoints.md), [parâmetros](slice-parameters.md) e [erros](errors.md).
 
-## Tags no Swagger
+Esta revisão é somente documental: não modifica o Go que contém a especificação. Não gere um cliente assumindo fidelidade completa sem comparar esquema e handlers. Teste multipart e download por HTTP real; o Swagger não substitui integração com o CLI.
 
-A documentação é agrupada por tags:
-
-| Tag | Descrição |
-|-----|-----------|
-| `Health` | Healthcheck |
-| `Profiles` | CRUD/importação de profiles |
-| `Aliases` | Alias de profiles |
-| `Resolve` | Resolução de inherits/built-ins |
-| `Slicing` | Slice, preview, status e debug |
-| `Docs` | OpenAPI e Swagger |
-
-## Observações
-
-- Endpoints multipart podem exigir ajuste manual no Swagger UI dependendo do navegador.
-- Para testes completos de `/slice` e `/slice/preview`, `curl` costuma ser mais confiável.
-- O OpenAPI deve ser mantido alinhado com `docs/api/*.md`.
+A UI não adiciona autenticação: qualquer cliente com acesso à API pode executar operações reais. Não expor a interface como mecanismo de autorização.

@@ -1,66 +1,33 @@
-# Resumo de Endpoints
+# Rotas HTTP
 
-## Convenção de Documentação
+Inventário de `cmd/server/main.go`. Categorias de perfis: `printers`, `presets`, `filaments`.
 
-Cada endpoint detalhado segue este padrão:
+| Método | Rota | Resultado normal |
+|---|---|---|
+| GET | `/health` | 200 saudável ou 503 degradado |
+| GET | `/metrics` | 200, métricas JSON |
+| GET | `/openapi.json` | 200, especificação manual |
+| GET | `/api-docs` | 200, Swagger UI |
+| GET | `/profiles/{category}` | 200, lista de perfis salvos |
+| GET | `/profiles/{category}/{name}` | 200, JSON salvo |
+| POST | `/profiles/{category}/upload` | 201, grava/substitui perfil |
+| POST | `/profiles/{category}/import-url` | 201, importa JSON HTTPS |
+| POST | `/profiles/{category}/{name}/update-from-source` | 200, atualização manual |
+| DELETE | `/profiles/{category}/{name}` | 204, remove perfil e source |
+| GET | `/profiles/builtins/{category}` | 200, lista rasa; pode retornar 404 no layout vendor |
+| POST | `/profiles/resolve` | 200, perfil resolvido e warnings |
+| POST | `/slice/resolve-profiles` | 200, resolução dos nomes selecionados |
+| GET | `/profile-aliases` | 200, aliases persistidos |
+| POST | `/profile-aliases` | 200, lista após gravação |
+| DELETE | `/profile-aliases/{category}/{from}` | 200, lista após remoção |
+| POST | `/slice` | 200, arquivo ou ZIP |
+| POST | `/slice/async` | 202, metadados do job |
+| POST | `/slice/preview` | 200, JSON de prévia |
+| GET | `/slice/status` | 200, estado global persistido |
+| GET | `/slice/debug` | 200, último diagnóstico global |
+| GET | `/jobs` | 200, jobs conhecidos, sem paginação |
+| GET | `/jobs/{id}` | 200, estado do job |
+| GET | `/jobs/{id}/download` | 200, primeiro arquivo do job |
+| DELETE | `/jobs/{id}` | 204, tentativa de cancelamento, não remoção |
 
-1. Método e rota
-2. Descrição
-3. Parâmetros de path/query/form/body
-4. Resposta de sucesso
-5. Erros comuns
-6. Exemplo `curl`
-
-## Health
-
-| Método | Rota | Descrição |
-|--------|------|-----------|
-| `GET` | `/health` | Verifica status da API, `DATA_PATH` e OrcaSlicer |
-
-## Profiles
-
-| Método | Rota | Descrição |
-|--------|------|-----------|
-| `GET` | `/profiles/{category}` | Lista profiles de uma categoria |
-| `GET` | `/profiles/{category}/{name}` | Obtém um profile específico |
-| `POST` | `/profiles/{category}/upload` | Faz upload de profile JSON |
-| `POST` | `/profiles/{category}/import-url` | Importa profile por URL HTTPS raw |
-| `POST` | `/profiles/{category}/{name}/update-from-source` | Atualiza profile usando source URL salva |
-| `DELETE` | `/profiles/{category}/{name}` | Remove profile |
-
-Categorias válidas:
-
-- `printers`
-- `presets`
-- `filaments`
-
-## Aliases
-
-| Método | Rota | Descrição |
-|--------|------|-----------|
-| `GET` | `/profile-aliases` | Lista aliases configurados |
-| `POST` | `/profile-aliases` | Cria ou atualiza alias |
-| `DELETE` | `/profile-aliases/{category}/{from}` | Remove alias |
-
-## Resolve
-
-| Método | Rota | Descrição |
-|--------|------|-----------|
-| `POST` | `/profiles/resolve` | Resolve um profile com `inherits`, built-ins e overrides |
-| `POST` | `/slice/resolve-profiles` | Resolve os profiles de um slicing |
-
-## Slicing
-
-| Método | Rota | Descrição |
-|--------|------|-----------|
-| `POST` | `/slice` | Executa slicing e retorna G-code/3MF/ZIP |
-| `POST` | `/slice/preview` | Gera preview JSON com thumbnail e detecção de suporte. Ver [Preview](preview.md) |
-| `GET` | `/slice/status` | Retorna status persistido do último slicing. Ver [Status e Debug](status-debug.md) |
-| `GET` | `/slice/debug` | Retorna debug do último slicing. Ver [Status e Debug](status-debug.md) |
-
-## Documentação Interativa
-
-| Método | Rota | Descrição |
-|--------|------|-----------|
-| `GET` | `/openapi.json` | OpenAPI JSON |
-| `GET` | `/api-docs` | Swagger UI |
+Referências: [perfis](profiles.md), [resolve/aliases](resolve-aliases.md), [slicing/jobs](slicing.md), [erros](errors.md). Nenhuma rota exige credencial atualmente.
