@@ -68,6 +68,41 @@ O nome do asset é derivado da versão:
 upstream (SoftFever/OrcaSlicer) renomear, mover ou apagar o asset. Atualizar a versão
 portanto atualiza uma dependência de rede em tempo de build, não só um número.
 
+### Por que o repo está em 2.4.1 (testado em 2026-11-14)
+
+A 2.5.0 foi buildada, publicada e **testada contra o uso real**: o bump foi
+revertido porque quebra o faturamento. Registro para ninguém tentar de novo sem
+resolver isto primeiro.
+
+O que a 2.5.0 mudou por dentro: os perfis de fabricante deixaram de ser arquivos
+`.json` e passaram a vir dentro de arquivos **`.opc`** (Orca Profile Collection,
+formato binário, magic `ZCRO`, um por fabricante: `Elegoo.opc`, `BBL.opc`, ...).
+Em 2.4.1 existia, por exemplo,
+`resources/profiles/Elegoo/machine/EN4SERIES/Elegoo Neptune 4 0.4 nozzle.json`; em
+2.5.0 esse caminho não existe mais — só `Elegoo.opc`.
+
+Consequência medida com um perfil de impressora que declara
+`"inherits": "Elegoo Neptune 4 0.4 nozzle"`:
+
+- com `resolveProfiles=true` → a própria resolução falha:
+  `parent profile was not found` (HTTP 400);
+- com `resolveProfiles=false` → quem falha é o CLI:
+  `can not resolve preset .../printer.json` e
+  `The input preset file is invalid and can not be parsed` (HTTP 500).
+
+Ou seja: qualquer perfil de usuário que dependa de um perfil de fabricante embutido
+para de fatiar. Para rodar 2.5.0 seria preciso uma de:
+
+1. ler `.opc` (formato ainda não documentado; engenharia reversa do `ZCRO`);
+2. extrair os `.opc` para JSON em tempo de build (mesmo problema do item 1);
+3. tornar os perfis de usuário auto-suficientes (sem `inherits` de embutido),
+   o que exige reconfigurar os perfis de quem usa e muda o significado de
+   `resolveProfiles`.
+
+`GET /profiles/builtins/{category}` também está quebrado **desde antes** do bump:
+responde `failed to read profiles: open .../profiles/printers: no such file or
+directory` em 2.4.1 e em 2.5.0. Não depende da versão e não foi corrigido.
+
 ## Publicação da imagem
 
 - `container.yml`: dispara em push em `main`, tag `v*` e `workflow_dispatch`. Publica
