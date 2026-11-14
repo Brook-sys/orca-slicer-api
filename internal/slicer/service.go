@@ -272,11 +272,11 @@ func (s *Service) Preview(ctx context.Context, filename string, data []byte, set
 	}, nil
 }
 
-func (s Service) buildArgs(inputPath string, inputDir string, outputDir string, settings Settings, debug *SliceDebug) ([]string, error) {
+func (s *Service) buildArgs(inputPath string, inputDir string, outputDir string, settings Settings, debug *SliceDebug) ([]string, error) {
 	return s.buildArgsForInputs([]string{inputPath}, inputDir, outputDir, settings, debug)
 }
 
-func (s Service) buildArgsForInputs(inputPaths []string, inputDir string, outputDir string, settings Settings, debug *SliceDebug) ([]string, error) {
+func (s *Service) buildArgsForInputs(inputPaths []string, inputDir string, outputDir string, settings Settings, debug *SliceDebug) ([]string, error) {
 	args := make([]string, 0)
 
 	if settings.ExportType == "3mf" {
@@ -423,15 +423,25 @@ func (s Service) buildArgsForInputs(inputPaths []string, inputDir string, output
 	return args, nil
 }
 
-func (s Service) loadSelectedProfile(category string, name string, overrides map[string]any, resolve bool) (map[string]any, error) {
-	if resolve {
-		resolved, err := ResolveProfile(s.DataPath, s.OrcaProfilesPath, category, name, overrides)
-		if err != nil {
-			return nil, err
-		}
-		return resolved.Resolved, nil
+// loadSelectedProfile carrega um perfil nomeado do DataPath ou da arvore vendor.
+//
+// A heranca e sempre resolvida aqui, e nao no CLI do Orca. Ate a 2.4.1 o
+// --load-settings aceitava um preset cru com "inherits" e resolvia a cadeia
+// usando a arvore vendor; na 2.5.0 o resolve_preset_config passou a exigir que o
+// arquivo ja esteja carregado no bundle (ou venha de uma arvore vendor com
+// manifesto), e um arquivo arbitrario em diretorio temporario e rejeitado com
+// "The input preset file is invalid and can not be parsed". Resolver aqui e
+// escrever o perfil ja achatado e a unica forma de o CLI 2.5.0 fatar.
+//
+// O parametro resolve existe apenas para compatibilidade de assinatura: a
+// partir da 2.5.0 ele e ignorado, porque nao ha caminho viavel sem resolucao.
+func (s *Service) loadSelectedProfile(category string, name string, overrides map[string]any, resolve bool) (map[string]any, error) {
+	_ = resolve
+	resolved, err := ResolveProfile(s.DataPath, s.OrcaProfilesPath, category, name, overrides)
+	if err != nil {
+		return nil, err
 	}
-	return loadRawUserProfile(s.DataPath, category, name, overrides)
+	return resolved.Resolved, nil
 }
 
 func prepareProfileForSlicing(category string, profile map[string]any, sanitize bool) map[string]any {

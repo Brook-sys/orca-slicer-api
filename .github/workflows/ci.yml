@@ -40,16 +40,11 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
-          # ATENÇÃO: linux/arm64 aqui NÃO produz imagem utilizável em ARM.
-          # O Dockerfile baixa sempre o AppImage amd64 do OrcaSlicer, então a
-          # imagem arm64 builda (Go compila cruzado, apt instala libs arm64) e
-          # falha ao executar o slicer. Suporte real exigiria escolher o asset
-          # por TARGETARCH (o upstream publica ..._aarch64_...).
-          # Imagem publicada de verdade: apenas container.yml, linux/amd64.
-          # Nota: este job também publica as tags main/sha-* no GHCR, repetindo
-          # o que container.yml faz — as duas corridas competem pela mesma tag.
-          platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
+          # O AppImage usado pelo Dockerfile é amd64; não publicar um
+          # manifest arm64 cujo slicer não executa nessa arquitetura.
+          # container.yml é o único publicador; este job só valida o build.
+          platforms: linux/amd64
+          push: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

@@ -13,7 +13,7 @@ permissions:
   packages: write
 
 env:
-  ORCA_VERSION: 2.4.1
+  ORCA_VERSION: 2.5.0
 
 jobs:
   docker:

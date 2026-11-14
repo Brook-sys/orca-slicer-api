@@ -16,6 +16,20 @@ type ProfileListItem struct {
 	Path string `json:"path"`
 }
 
+// builtInCategoryDirName devolve o nome do diretorio que o Orca usa na arvore
+// vendor. A API usa "printers|presets|filaments"; o AppImage usa
+// "machine|process|filament".
+func builtInCategoryDirName(category string) string {
+	if mapped := map[string]string{
+		"printers":  "machine",
+		"presets":   "process",
+		"filaments": "filament",
+	}[category]; mapped != "" {
+		return mapped
+	}
+	return category
+}
+
 func (h Handler) ListBuiltinProfiles(w http.ResponseWriter, r *http.Request) {
 	category := r.PathValue("category")
 	if category == "" {
@@ -35,7 +49,25 @@ func (h Handler) ListBuiltinProfiles(w http.ResponseWriter, r *http.Request) {
 		base = "/app/squashfs-root/resources/profiles"
 	}
 
-	catPath := filepath.Join(base, category)
+	// Aceita os dois layouts: diretorio com o nome da categoria (perfis de
+	// usuario espelhados) e o nome que a arvore vendor do AppImage usa.
+	candidates := []string{
+		filepath.Join(base, category),
+		filepath.Join(base, builtInCategoryDirName(category)),
+	}
+
+	catPath := ""
+	for _, candidate := range candidates {
+		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+			catPath = candidate
+			break
+		}
+	}
+	if catPath == "" {
+		httpx.WriteError(w, httpx.NewError(http.StatusNotFound, "no built-in "+category+" profiles directory found"))
+		return
+	}
+
 	entries, err := os.ReadDir(catPath)
 	if err != nil {
 		httpx.WriteError(w, httpx.NewError(http.StatusInternalServerError, "failed to read profiles: "+err.Error()))

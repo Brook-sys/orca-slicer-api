@@ -1,4 +1,4 @@
-ARG ORCA_VERSION=2.4.1
+ARG ORCA_VERSION=2.5.0
 
 FROM golang:1.23-bookworm AS build
 
@@ -9,6 +9,33 @@ RUN go mod download
 
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/orca-slicer-api ./cmd/server
+
+# A partir da 2.5.0 o AppImage nao embarca mais os JSON dos perfis: em
+# resources/profiles ficam apenas caches binarios .opc por vendor (formato
+# cereal interno do Slic3r, sem documentacao publica utilizavel). Sem os JSON a
+# API nao consegue resolver a cadeia de "inherits" dos perfis do usuario.
+#
+# Este stage busca os JSON no repositorio do Orca na MESMA tag do AppImage e
+# guarda apenas os arquivos .json em /out/profiles-json.
+FROM golang:1.23-bookworm AS vendorprofiles
+
+ARG ORCA_VERSION
+
+RUN set -eux; \
+    git clone --depth 1 --branch "v${ORCA_VERSION}" --filter=blob:none --no-checkout \
+        https://github.com/OrcaSlicer/OrcaSlicer.git /src; \
+    cd /src; \
+    git sparse-checkout set resources/profiles; \
+    git checkout "v${ORCA_VERSION}"; \
+    test -d resources/profiles; \
+    test -n "$(find resources/profiles -name '*.json' -print -quit)"; \
+    mkdir -p /out/profiles-json; \
+    find resources/profiles -name '*.json' -print0 \
+        | tar --null -cf /tmp/profiles.tar --files-from -; \
+    tar -xf /tmp/profiles.tar -C /out/profiles-json; \
+    rm -f /tmp/profiles.tar; \
+    test -n "$(find /out/profiles-json -name '*.json' -print -quit)"; \
+    find /out/profiles-json -name '*.json' | wc -l
 
 FROM ubuntu:24.04 AS orca
 
@@ -47,12 +74,15 @@ RUN apt-get update \
 	&& rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /out/orca-slicer-api /app/orca-slicer-api
+COPY --from=vendorprofiles /out/profiles-json /app/profiles-json
 COPY --from=orca /tmp/squashfs-root /app/squashfs-root
 
 ENV PORT=3000
 ENV DATA_PATH=/app/data
 ENV ORCASLICER_PATH=/app/squashfs-root/AppRun
-ENV ORCA_PROFILES_PATH=/app/squashfs-root/resources/profiles
+# Perfis vendor em JSON. O AppImage 2.5.0 so traz .opc nesta arvore; os JSON
+# vem do stage vendorprofiles, na mesma tag.
+ENV ORCA_PROFILES_PATH=/app/profiles-json/resources/profiles
 ENV ORCA_VERSION=${ORCA_VERSION}
 
 EXPOSE 3000

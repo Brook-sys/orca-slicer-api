@@ -1,6 +1,7 @@
 package slicer
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/Brook-sys/orca-slicer-api/internal/httpx"
@@ -36,12 +38,14 @@ func ResolveProfile(dataPath string, orcaProfilesPath string, category string, n
 	if overrides == nil {
 		overrides = map[string]any{}
 	}
-	base, err := resolveProfileInheritance(dataPath, orcaProfilesPath, category, name, map[string]bool{})
+	resolutionWarnings := make([]string, 0)
+	base, err := resolveProfileInheritance(dataPath, orcaProfilesPath, category, name, map[string]bool{}, &resolutionWarnings)
 	if err != nil {
 		return ResolveProfileResponse{}, err
 	}
 
 	warnings := missingKeys(base, overrides, "")
+	warnings = append(warnings, resolutionWarnings...)
 	resolved := merge(copyMap(base), overrides)
 	delete(resolved, "inherits")
 	return ResolveProfileResponse{Category: category, Name: name, Resolved: resolved, Warnings: warnings}, nil
@@ -63,17 +67,6 @@ func writeProfile(outputPath string, profile map[string]any) error {
 	return os.WriteFile(outputPath, data, 0o644)
 }
 
-func loadRawUserProfile(dataPath string, category string, name string, overrides map[string]any) (map[string]any, error) {
-	if overrides == nil {
-		overrides = map[string]any{}
-	}
-	profile, err := loadProfileByName(dataPath, "", category, name)
-	if err != nil {
-		return nil, err
-	}
-	return merge(copyMap(profile), overrides), nil
-}
-
 func sanitizeProfileForSlicing(category string, profile map[string]any) map[string]any {
 	if profile == nil {
 		return nil
@@ -85,14 +78,14 @@ func sanitizeProfileForSlicing(category string, profile map[string]any) map[stri
 	return profile
 }
 
-func resolveProfileInheritance(dataPath string, orcaProfilesPath string, category string, name string, seen map[string]bool) (map[string]any, error) {
+func resolveProfileInheritance(dataPath string, orcaProfilesPath string, category string, name string, seen map[string]bool, warnings *[]string) (map[string]any, error) {
 	key := category + ":" + name
 	if seen[key] {
 		return nil, httpx.NewError(http.StatusBadRequest, fmt.Sprintf("circular inherits detected for %s profile %q", category, name))
 	}
 	seen[key] = true
 
-	profile, err := loadProfileByName(dataPath, orcaProfilesPath, category, name)
+	profile, err := loadProfileByName(dataPath, orcaProfilesPath, category, name, warnings)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +96,7 @@ func resolveProfileInheritance(dataPath string, orcaProfilesPath string, categor
 		return profile, nil
 	}
 
-	parent, err := resolveProfileInheritance(dataPath, orcaProfilesPath, category, inherits, seen)
+	parent, err := resolveProfileInheritance(dataPath, orcaProfilesPath, category, inherits, seen, warnings)
 	if err != nil {
 		var httpErr *httpx.Error
 		if errors.As(err, &httpErr) && httpErr.Status == http.StatusNotFound {
@@ -117,7 +110,7 @@ func resolveProfileInheritance(dataPath string, orcaProfilesPath string, categor
 	return merged, nil
 }
 
-func loadProfileByName(dataPath string, orcaProfilesPath string, category string, name string) (map[string]any, error) {
+func loadProfileByName(dataPath string, orcaProfilesPath string, category string, name string, warnings *[]string) (map[string]any, error) {
 	categoryPath := filepath.Join(dataPath, category)
 	targets := profileAliasTargets(dataPath, category, name)
 	for _, target := range targets {
@@ -150,7 +143,9 @@ func loadProfileByName(dataPath string, orcaProfilesPath string, category string
 		}
 		profile, err := readProfileFile(filepath.Join(categoryPath, entry.Name()), category, strings.TrimSuffix(entry.Name(), ".json"))
 		if err != nil {
-			return nil, err
+			// Um perfil de usuario corrompido nao pode abortar a busca: os outros
+			// perfis do diretorio continuam validos.
+			continue
 		}
 		for _, target := range targets {
 			if profileMatches(profile, strings.TrimSuffix(entry.Name(), ".json"), target) {
@@ -160,7 +155,7 @@ func loadProfileByName(dataPath string, orcaProfilesPath string, category string
 	}
 
 	for _, target := range targets {
-		if profile, err := loadBuiltInProfileByName(orcaProfilesPath, category, target); err == nil {
+		if profile, err := loadBuiltInProfileByName(orcaProfilesPath, category, target, warnings); err == nil {
 			return profile, nil
 		} else if !isNotFoundHTTPError(err) {
 			return nil, err
@@ -170,7 +165,7 @@ func loadProfileByName(dataPath string, orcaProfilesPath string, category string
 	return nil, httpx.NewError(http.StatusNotFound, fmt.Sprintf("%s profile %q not found", category, name))
 }
 
-func loadBuiltInProfileByName(orcaProfilesPath string, category string, name string) (map[string]any, error) {
+func loadBuiltInProfileByName(orcaProfilesPath string, category string, name string, warnings *[]string) (map[string]any, error) {
 	if strings.TrimSpace(orcaProfilesPath) == "" {
 		return nil, httpx.NewError(http.StatusNotFound, fmt.Sprintf("built-in %s profile %q not found", category, name))
 	}
@@ -201,6 +196,22 @@ func loadBuiltInProfileByName(orcaProfilesPath string, category string, name str
 			return profile, nil
 		}
 		if !isNotFoundHTTPError(err) {
+			return nil, err
+		}
+	}
+
+	// Ultimo recurso: o Orca renomeia perfis entre versoes mantendo apenas o
+	// "renamed_from" no arquivo novo (ex.: "0.20mm Standard @Elegoo N4 0.4 nozzle"
+	// foi "0.20mm Standard @Elegoo Neptune4 (0.4 nozzle)"). Se nenhuma busca
+	// encontrou o pai, aceita um arquivo cujo conjunto de tokens do nome seja
+	// identico, que e o caso de "Generic PLA @Elegoo" vs "Elegoo Generic PLA".
+	for _, dir := range baseDirs {
+		if profile, matched, err := findProfileByTokenSet(dir, category, name); err == nil {
+			if warnings != nil {
+				*warnings = append(*warnings, fmt.Sprintf("%s parent profile %q resolved by token-equivalent name %q", category, name, matched))
+			}
+			return profile, nil
+		} else if !isNotFoundHTTPError(err) {
 			return nil, err
 		}
 	}
@@ -236,7 +247,9 @@ func findProfileRecursive(root string, category string, name string) (map[string
 		}
 		profile, err := readProfileFile(path, category, strings.TrimSuffix(entry.Name(), ".json"))
 		if err != nil {
-			return nil, err
+			// Arquivo invalido (ex.: UTF-8 com BOM) nao pode impedir a busca dos
+			// demais perfis da arvore vendor.
+			continue
 		}
 		for _, target := range targets {
 			if profileMatches(profile, strings.TrimSuffix(entry.Name(), ".json"), target) {
@@ -246,6 +259,109 @@ func findProfileRecursive(root string, category string, name string) (map[string
 	}
 
 	return nil, httpx.NewError(http.StatusNotFound, fmt.Sprintf("built-in %s profile %q not found", category, name))
+}
+
+// findProfileByTokenSet procura, em ultimo caso, um perfil da arvore vendor cujo
+// nome tenha exatamente o mesmo conjunto de tokens normalizados do nome pedido.
+// Cobre renomeacoes do Orca que reordenam as palavras ("Generic PLA @Elegoo" vs
+// "Elegoo Generic PLA") sem alterar o renamed_from.
+func findProfileByTokenSet(root string, category string, name string) (map[string]any, string, error) {
+	wanted := profileTokenSet(name)
+	if len(wanted) < 2 {
+		return nil, "", httpx.NewError(http.StatusNotFound, fmt.Sprintf("built-in %s profile %q not found", category, name))
+	}
+
+	var found map[string]any
+	var foundName string
+	var walk func(dir string) error
+	walk = func(dir string) error {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil
+			}
+			return err
+		}
+		for _, entry := range entries {
+			path := filepath.Join(dir, entry.Name())
+			if entry.IsDir() {
+				if err := walk(path); err != nil {
+					return err
+				}
+				continue
+			}
+			if !strings.HasSuffix(entry.Name(), ".json") || strings.HasSuffix(entry.Name(), ".source.json") {
+				continue
+			}
+			base := strings.TrimSuffix(entry.Name(), ".json")
+			// Nome do arquivo e "name"/"renamed_from" internos sao candidatos.
+			candidates := []string{base}
+			if profile, err := readProfileFile(path, category, base); err == nil {
+				for _, key := range []string{"name", "renamed_from", "print_settings_id", "printer_settings_id"} {
+					if value, ok := profile[key].(string); ok && strings.TrimSpace(value) != "" {
+						candidates = append(candidates, value)
+					}
+				}
+				for _, candidate := range candidates {
+					if sameStringSet(profileTokenSet(candidate), wanted) {
+						if found != nil {
+							return httpx.NewError(http.StatusBadRequest, fmt.Sprintf("ambiguous token-equivalent %s profile %q; configure an explicit alias", category, name))
+						}
+						found = profile
+						foundName = base
+						break
+					}
+				}
+			}
+		}
+		return nil
+	}
+
+	if err := walk(root); err != nil {
+		return nil, "", err
+	}
+	if found == nil {
+		return nil, "", httpx.NewError(http.StatusNotFound, fmt.Sprintf("built-in %s profile %q not found", category, name))
+	}
+	return found, foundName, nil
+}
+
+func sameStringSet(a []string, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	seen := make(map[string]int, len(a))
+	for _, item := range a {
+		seen[item]++
+	}
+	for _, item := range b {
+		seen[item]--
+		if seen[item] < 0 {
+			return false
+		}
+	}
+	for _, count := range seen {
+		if count != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// profileTokenSet devolve os tokens normalizados do nome, em ordem estavel.
+func profileTokenSet(value string) []string {
+	fields := strings.FieldsFunc(sanitizeProfileName(value), func(r rune) bool {
+		return r == '_'
+	})
+	tokens := make([]string, 0, len(fields))
+	for _, field := range fields {
+		field = strings.ToLower(strings.TrimSpace(field))
+		if field != "" {
+			tokens = append(tokens, field)
+		}
+	}
+	sort.Strings(tokens)
+	return tokens
 }
 
 func builtInCategoryDirs(orcaProfilesPath string, category string) []string {
@@ -271,6 +387,9 @@ func readProfileFile(path string, category string, name string) (map[string]any,
 	if err != nil {
 		return nil, err
 	}
+	// Perfis vendor do Orca as vezes sao salvos com BOM UTF-8 (acontece em
+	// varios BenFab). encoding/json rejeita o BOM, entao removemos aqui.
+	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
 	var profile map[string]any
 	if err := json.Unmarshal(data, &profile); err != nil {
 		return nil, httpx.NewError(http.StatusBadRequest, fmt.Sprintf("%s profile %q is invalid JSON", category, name))
