@@ -43,7 +43,7 @@ Dashboard / Cliente
 - Metadata de G-code/3MF
 - Retorno de arquivo ou ZIP
 - OpenAPI + Swagger UI
-- Docker com OrcaSlicer oficial amd64
+- Docker com OrcaSlicer oficial amd64 (imagem publicada apenas para linux/amd64)
 - GHCR via GitHub Actions
 
 ## O Que Não Está Implementado (Por Design)

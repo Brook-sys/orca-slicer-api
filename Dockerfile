@@ -1,4 +1,4 @@
-ARG ORCA_VERSION=2.4.1
+ARG ORCA_VERSION=2.5.0
 
 FROM golang:1.23-bookworm AS build
 

@@ -341,7 +341,7 @@ const OpenAPI = `{
           "orcaSlicerExecutable": true,
           "orcaProfilesPath": "/app/squashfs-root/resources/profiles",
           "orcaProfilesPathExists": true,
-          "orcaVersion": "2.4.1",
+          "orcaVersion": "2.5.0",
           "generateImage": true,
           "resolveProfiles": true,
           "sanitizeProfiles": true
