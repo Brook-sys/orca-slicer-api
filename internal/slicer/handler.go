@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -224,7 +225,9 @@ func (h Handler) SliceAsync(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
-	json.NewEncoder(w).Encode(job)
+	if err := json.NewEncoder(w).Encode(job); err != nil {
+		slog.Error("failed to write async job response", "error", err)
+	}
 }
 
 func (h Handler) Preview(w http.ResponseWriter, r *http.Request) {

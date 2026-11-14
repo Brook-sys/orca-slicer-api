@@ -45,9 +45,16 @@ EOF
 	// 1. Submit async job
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
-	part, _ := writer.CreateFormFile("file", "model.stl")
-	part.Write([]byte("solid test\nendsolid test\n"))
-	writer.Close()
+	part, err := writer.CreateFormFile("file", "model.stl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write([]byte("solid test\nendsolid test\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	req := httptest.NewRequest("POST", "/slice/async", &body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())

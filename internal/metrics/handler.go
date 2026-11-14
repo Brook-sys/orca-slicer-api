@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"runtime"
 	"time"
@@ -35,5 +36,7 @@ func (h Handler) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(stats)
+	if err := json.NewEncoder(w).Encode(stats); err != nil {
+		slog.Error("failed to write metrics response", "error", err)
+	}
 }

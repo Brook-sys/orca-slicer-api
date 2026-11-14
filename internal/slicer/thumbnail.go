@@ -151,9 +151,6 @@ func renderThumbnail(triangles []triangle3, size int, background color.RGBA) *im
 	if len(triangles) == 0 {
 		return img
 	}
-	// Neptune 4 thumbnail: teal model (#22948a) on transparent background
-	baseR, baseG, baseB := uint8(0x22), uint8(0x94), uint8(0x8a)
-
 	minX, minY := math.Inf(1), math.Inf(1)
 	maxX, maxY := math.Inf(-1), math.Inf(-1)
 	for _, tri := range triangles {
@@ -188,7 +185,7 @@ func renderThumbnail(triangles []triangle3, size int, background color.RGBA) *im
 	}
 	sort.Slice(projected, func(i, j int) bool { return projected[i].depth < projected[j].depth })
 	// Neptune 4: teal model (#22948a) with shading
-	baseR, baseG, baseB = uint8(0x22), uint8(0x94), uint8(0x8a)
+	baseR, baseG, baseB := uint8(0x22), uint8(0x94), uint8(0x8a)
 	for _, tri := range projected {
 		brightness := float64(tri.shade) / 255.0
 		r := uint8(float64(baseR) * brightness)
@@ -237,165 +234,4 @@ func fillTriangle(img *image.RGBA, points [3]image.Point, c color.RGBA) {
 
 func edge(a, b, c image.Point) int {
 	return (c.X-a.X)*(b.Y-a.Y) - (c.Y-a.Y)*(b.X-a.X)
-}
-
-func encodeColPic(img *image.RGBA) string {
-	width := img.Bounds().Dx()
-	height := img.Bounds().Dy()
-	colors := make([]uint16, width*height)
-	index := len(colors) - 1
-	for row := 0; row < height; row++ {
-		for col := 0; col < width; col++ {
-			px := img.RGBAAt(width-col-1, row)
-			r := uint16(px.R) >> 3
-			g := uint16(px.G) >> 2
-			b := uint16(px.B) >> 3
-			if px.A == 0 {
-				r = 46 >> 3
-				g = 51 >> 2
-				b = 72 >> 3
-			}
-			colors[index] = (r << 11) | (g << 5) | b
-			index--
-		}
-	}
-	encoded := colPicEncode(colors, width, height, 1024)
-	return colPicEncodeString(encoded)
-}
-
-type colorHead struct {
-	color uint16
-	qty   int
-}
-
-func colPicEncode(colors []uint16, width int, height int, colorsMax int) []byte {
-	if colorsMax > 1024 {
-		colorsMax = 1024
-	}
-	palette := make([]colorHead, 0, colorsMax)
-	positions := map[uint16]int{}
-	for _, c := range colors {
-		if pos, ok := positions[c]; ok {
-			palette[pos].qty++
-			continue
-		}
-		positions[c] = len(palette)
-		palette = append(palette, colorHead{color: c, qty: 1})
-	}
-	sort.SliceStable(palette, func(i, j int) bool { return palette[i].qty > palette[j].qty })
-	for len(palette) > colorsMax {
-		last := palette[len(palette)-1]
-		closest := 0
-		closestDistance := math.MaxInt
-		for i := 0; i < colorsMax; i++ {
-			distance := colorDistance(last.color, palette[i].color)
-			if distance < closestDistance {
-				closestDistance = distance
-				closest = i
-			}
-		}
-		for i, c := range colors {
-			if c == last.color {
-				colors[i] = palette[closest].color
-			}
-		}
-		palette = palette[:len(palette)-1]
-	}
-	paletteColors := make([]uint16, len(palette))
-	paletteIndex := make(map[uint16]int, len(palette))
-	for i, p := range palette {
-		paletteColors[i] = p.color
-		paletteIndex[p.color] = i
-	}
-	body := byte8bitEncode(colors, paletteIndex, len(colors))
-	out := make([]byte, 32+len(paletteColors)*2+len(body))
-	out[0] = 3
-	binary.LittleEndian.PutUint32(out[8:12], uint32(width))
-	binary.LittleEndian.PutUint32(out[12:16], uint32(height))
-	binary.LittleEndian.PutUint32(out[16:20], 0x05DDC33C)
-	binary.LittleEndian.PutUint32(out[20:24], uint32(len(paletteColors)*2))
-	binary.LittleEndian.PutUint32(out[24:28], uint32(len(body)))
-	paletteOffset := 32
-	for i, c := range paletteColors {
-		binary.LittleEndian.PutUint16(out[paletteOffset+i*2:paletteOffset+i*2+2], c)
-	}
-	copy(out[paletteOffset+len(paletteColors)*2:], body)
-	return out
-}
-
-func colorDistance(a uint16, b uint16) int {
-	ar, ag, ab := int((a>>11)&0x1f), int((a>>5)&0x3f), int(a&0x1f)
-	br, bg, bb := int((b>>11)&0x1f), int((b>>5)&0x3f), int(b&0x1f)
-	return abs(ar-br) + abs(ag-bg) + abs(ab-bb)
-}
-
-func byte8bitEncode(colors []uint16, palette map[uint16]int, dotsQty int) []byte {
-	out := make([]byte, 0, dotsQty)
-	src := 0
-	lastSID := 0
-	for dotsQty > 0 {
-		dots := 1
-		for i := 0; i < dotsQty-1; i++ {
-			if colors[src+i] != colors[src+i+1] {
-				break
-			}
-			dots++
-			if dots == 255 {
-				break
-			}
-		}
-		paletteID := palette[colors[src]]
-		tid := byte(paletteID % 32)
-		sid := byte(paletteID / 32)
-		if lastSID != int(sid) {
-			out = append(out, (7<<5)+sid)
-			lastSID = int(sid)
-		}
-		if dots <= 6 {
-			out = append(out, byte(dots<<5)+tid)
-		} else {
-			out = append(out, tid, byte(dots))
-		}
-		src += dots
-		dotsQty -= dots
-	}
-	return out
-}
-
-func colPicEncodeString(data []byte) string {
-	padding := 3 - (len(data) % 3)
-	for padding > 0 {
-		data = append(data, 0)
-		padding--
-	}
-	out := make([]byte, len(data)*4/3)
-	outIndex := len(out)
-	for hexIndex := len(data); hexIndex > 0; {
-		hexIndex -= 3
-		outIndex -= 4
-		temp0 := data[hexIndex] >> 2
-		temp1 := ((data[hexIndex] & 3) << 4) + (data[hexIndex+1] >> 4)
-		temp2 := ((data[hexIndex+1] & 15) << 2) + (data[hexIndex+2] >> 6)
-		temp3 := data[hexIndex+2] & 63
-		out[outIndex] = colPicChar(temp0)
-		out[outIndex+1] = colPicChar(temp1)
-		out[outIndex+2] = colPicChar(temp2)
-		out[outIndex+3] = colPicChar(temp3)
-	}
-	return string(out)
-}
-
-func colPicChar(value byte) byte {
-	value += 48
-	if value == '\\' {
-		return '~'
-	}
-	return value
-}
-
-func abs(value int) int {
-	if value < 0 {
-		return -value
-	}
-	return value
 }

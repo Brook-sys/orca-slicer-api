@@ -51,14 +51,6 @@ func ResolveProfile(dataPath string, orcaProfilesPath string, category string, n
 	return ResolveProfileResponse{Category: category, Name: name, Resolved: resolved, Warnings: warnings}, nil
 }
 
-func writeResolvedProfile(dataPath string, orcaProfilesPath string, category string, name string, overrides map[string]any, outputPath string) error {
-	resolved, err := ResolveProfile(dataPath, orcaProfilesPath, category, name, overrides)
-	if err != nil {
-		return err
-	}
-	return writeProfile(outputPath, resolved.Resolved)
-}
-
 func writeProfile(outputPath string, profile map[string]any) error {
 	data, err := json.MarshalIndent(profile, "", "  ")
 	if err != nil {
@@ -453,32 +445,6 @@ func ensureCompatibleProfile(profile map[string]any, printer map[string]any) {
 		profile["compatible_printers"] = appendStringValue(profile["compatible_printers"], printerName)
 	}
 	profile["compatible_printers_condition"] = ""
-}
-
-func alignSelectedProfiles(printer map[string]any, preset map[string]any, filament map[string]any) {
-	if printer != nil && preset != nil {
-		ensureCompatibleProfile(preset, printer)
-		if presetName := firstProfileIdentity(preset, []string{"print_settings_id", "name", "renamed_from"}); presetName != "" {
-			printer["default_print_profile"] = presetName
-		}
-	}
-	if printer != nil && filament != nil {
-		ensureCompatibleProfile(filament, printer)
-		if filamentName := firstProfileIdentity(filament, []string{"name"}); filamentName != "" {
-			printer["default_filament_profile"] = []string{filamentName}
-		}
-	}
-}
-
-func firstProfileIdentity(profile map[string]any, keys []string) string {
-	for _, key := range keys {
-		value, ok := profile[key].(string)
-		value = strings.TrimSpace(value)
-		if ok && value != "" {
-			return value
-		}
-	}
-	return ""
 }
 
 func profileIdentityNames(profile map[string]any, keys []string) []string {

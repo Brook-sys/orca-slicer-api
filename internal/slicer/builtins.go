@@ -2,6 +2,7 @@ package slicer
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -91,5 +92,7 @@ func (h Handler) ListBuiltinProfiles(w http.ResponseWriter, r *http.Request) {
 	sort.Slice(items, func(i, j int) bool { return items[i].Name < items[j].Name })
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(items)
+	if err := json.NewEncoder(w).Encode(items); err != nil {
+		slog.Error("failed to write built-in profiles response", "error", err)
+	}
 }

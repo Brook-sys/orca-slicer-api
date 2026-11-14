@@ -13,7 +13,9 @@ import (
 
 func TestGetMetrics(t *testing.T) {
 	jobStore := jobs.NewStore()
-	jobStore.Create() // Creates a pending job
+	if _, err := jobStore.Create(); err != nil {
+		t.Fatal(err)
+	}
 
 	cache := slicer.NewResultCache(time.Hour, 10)
 	handler := Handler{
@@ -41,7 +43,7 @@ func TestGetMetrics(t *testing.T) {
 	if stats["cache_enabled"] != true {
 		t.Fatalf("expected cache_enabled=true")
 	}
-	
+
 	jobStats := stats["jobs"].(map[string]any)
 	if jobStats["total"].(float64) != 1 {
 		t.Fatalf("expected 1 total job, got %v", jobStats["total"])

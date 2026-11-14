@@ -49,13 +49,6 @@ func (c *ResultCache) makeModelsKey(models []ModelInput, settings Settings) stri
 	return c.makeSettingsKey(h, settings)
 }
 
-func (c *ResultCache) makeKey(filename string, data []byte, settings Settings) string {
-	h := sha256.New()
-	h.Write(data)
-	h.Write([]byte(filename))
-	return c.makeSettingsKey(h, settings)
-}
-
 func (c *ResultCache) makeSettingsKey(h hash.Hash, settings Settings) string {
 	h.Write([]byte(settings.Printer + "|" + settings.Preset + "|" + settings.Filament))
 	h.Write([]byte(settings.ExportType))

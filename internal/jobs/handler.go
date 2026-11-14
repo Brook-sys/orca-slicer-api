@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -27,7 +28,9 @@ func (h Handler) GetJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(job)
+	if err := json.NewEncoder(w).Encode(job); err != nil {
+		slog.Error("failed to write job response", "error", err)
+	}
 }
 
 func (h Handler) DownloadJob(w http.ResponseWriter, r *http.Request) {
@@ -90,5 +93,7 @@ func (h Handler) ListJobs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(list)
+	if err := json.NewEncoder(w).Encode(list); err != nil {
+		slog.Error("failed to write jobs response", "error", err)
+	}
 }
