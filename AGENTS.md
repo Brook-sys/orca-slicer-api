@@ -49,7 +49,7 @@ go build -o /tmp/orca-slicer-api ./cmd/server
 
 Esses gates não substituem integração com o CLI. Antes de considerar uma atualização validada, use dados sintéticos e volume isolado: health + banner, resolução de herança, slice real com flag true/false, metadados, thumbnails, preview, async/download/cancelamento e erros de concorrência. Veja `docs/api/operations.md`.
 
-Limitações que não podem ser ocultadas: não há autenticação, fila de espera ou isolamento por usuário; cache não cobre todos os inputs; metadados de jobs não recuperam resultados após restart; built-ins não têm listagem recursiva completa; não há limite agregado de upload. `/metrics` retorna JSON, não Prometheus.
+Limitações que não podem ser ocultadas: não há autenticação, fila de espera ou isolamento por usuário; cache não captura ambiente/recursos implícitos do CLI; metadados de jobs não recuperam resultados após restart; built-ins não têm listagem recursiva completa; não há limite agregado de upload. `/metrics` retorna JSON, não Prometheus.
 
 ## Privacidade e alterações
 

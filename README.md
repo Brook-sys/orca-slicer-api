@@ -87,7 +87,7 @@ Confira o HTTP, o arquivo e os metadados antes de imprimir. Múltiplos resultado
 
 - `/slice` e `/slice/async` aceitam STL, STEP/STP e 3MF; vários campos `files` permitem múltiplos modelos.
 - Um único fatiamento por processo, inclusive preview. Chamadas concorrentes recebem `409`; um job async concorrente pode ser aceito e depois falhar. **Não existe fila de espera.**
-- Preview executa fatiamento real, força suporte e thumbnail; não é análise gratuita ou garantia de necessidade física de suporte.
+- Preview executa fatiamento real, preserva suporte solicitado/preset e força G-code com thumbnail; não é análise gratuita ou garantia de necessidade física de suporte.
 - Jobs persistem metadados, mas resultados não são recuperados para download após reinício. O download async entrega apenas o primeiro arquivo.
 - Cache existe, mas a chave não inclui todos os parâmetros nem o conteúdo atualizado dos perfis. Pode reutilizar resultado inadequado; não confie nele para validar alterações de configuração.
 - Listagem de built-ins não percorre toda a árvore vendor; pode retornar `404` mesmo quando a resolução por nome funciona.

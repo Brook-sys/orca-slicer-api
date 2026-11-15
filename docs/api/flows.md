@@ -28,4 +28,4 @@ Não há fila de espera nem recuperação de resultados após restart. Não usar
 
 Não repetir automaticamente POST após timeout sem verificar o estado conhecido: pode duplicar trabalho. Em 409, informar ocupado e deixar o cliente controlar nova tentativa. Em erro de perfil, resolver primeiro e conferir raiz/pai/aliases. `/slice/debug` é global: comparar timestamps.
 
-Quando variar overrides ou parâmetros para comparação, controlar o cache em ambiente isolado; a chave atual pode ignorar a variação. Não tratar um hit como comprovação de novo slice.
+Quando variar overrides ou parâmetros para comparação, controlar o cache em ambiente isolado; a chave inclui settings, perfis efetivos e executável, mas não captura ambiente/recursos implícitos do CLI. Não tratar um hit como comprovação de novo slice.

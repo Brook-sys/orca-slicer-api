@@ -17,6 +17,6 @@ Esta lista orienta uma integração externa; não descreve um frontend fornecido
 - [ ] Usar job específico para polling; guardar download antes de reiniciar servidor.
 - [ ] Apresentar cancelamento como tentativa e conferir estado depois.
 - [ ] Não publicar conteúdo integral de debug/perfis; comparar timestamp do diagnóstico global.
-- [ ] Avisar sobre cache incompleto ao comparar parâmetros; não assumir que toda alteração foi refatiada.
+- [ ] Não assumir que hit de cache comprova nova execução do CLI; conferir representação, perfis e limitações operacionais.
 
 Veja [fluxos](flows.md), [parâmetros](slice-parameters.md) e [limitações](operations.md).

@@ -36,7 +36,7 @@ Confira perfis achatados e warnings. Perfis nomeados são sempre resolvidos, mes
 
 Execute o exemplo síncrono de [examples.md](api/examples.md), com modelo local simples e perfis selecionados. Confira HTTP, headers, formato de arquivo e saída. Posição/escala precisam caber na mesa; `arrange` é false por padrão e pode ser solicitado quando apropriado.
 
-Não use comparação de parâmetros sem controlar o cache de teste: a chave atual é incompleta. Leia [operação](api/operations.md) antes de validar mudanças. Sucesso de CLI não valida impressão física nem equivalência entre versões.
+A chave do cache inclui settings, perfis efetivos e executável; hit não comprova nova execução do CLI. Leia [operação](api/operations.md) antes de validar mudanças. Sucesso de CLI não valida impressão física nem equivalência entre versões.
 
 ## 6. Integrar e validar
 

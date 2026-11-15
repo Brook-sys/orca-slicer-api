@@ -52,6 +52,7 @@ func TestPersistentResultCacheCopiesResultFiles(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected persistent cache hit")
 	}
+	defer os.RemoveAll(entry.Workdir)
 	if entry.Workdir == workdir {
 		t.Fatalf("expected cache workdir to be copied")
 	}
@@ -75,8 +76,9 @@ func TestResultCacheUsesModelsAndSettings(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected cache hit")
 	}
-	if entry.Files[0] != resultPath || entry.Workdir != workdir {
-		t.Fatalf("unexpected cache entry %#v", entry)
+	defer os.RemoveAll(entry.Workdir)
+	if entry.Files[0] == resultPath || entry.Workdir == workdir {
+		t.Fatalf("cache must return an independent copy: %#v", entry)
 	}
 
 	otherKey := cache.makeModelsKey(models, Settings{ExportType: "3mf"})

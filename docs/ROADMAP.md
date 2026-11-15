@@ -11,7 +11,7 @@ As propostas abaixo **não estão implementadas**, não têm prazo/compromisso d
 ## Lacunas conhecidas a avaliar
 
 - Catálogo built-in recursivo por fabricante/categoria: hoje a rota rasa retorna 404 no layout vendor normal, apesar da resolução por nome funcionar. Expansão não faz parte desta correção.
-- Chave de cache completa, invalidação por perfis/versão e lifecycle seguro de arquivos.
+- Evoluir cache para capturar recursos implícitos/ambiente do CLI e medir custo de hash/cópias; settings, perfis efetivos, executável e ownership de snapshots já são considerados.
 - Entrega durável de resultados de jobs após restart, múltiplos arquivos async e coleta de temporários.
 - Autenticação/autorização, endurecimento SSRF, limites agregados de upload, timeouts HTTP e quotas de recursos.
 - Contrato OpenAPI alinhado aos handlers e testes de divergência.

@@ -16,7 +16,11 @@ CORS é apenas política de navegador, com default `*`. Não protege endpoints d
 
 O servidor configura TTL de **1 hora** e máximo de **100 entradas**, com cópias em `DATA_PATH/cache`. O índice é somente em memória, não restaurado do disco. Limpeza/evicção de arquivos ocorre periodicamente.
 
-A chave atual considera modelos (bytes e nomes), nomes de perfis, exportType e alguns controles de preset. **Não inclui** overrides, conteúdo de perfis diretos/salvos, versão do Orca, arrange/orient, plate, bedType e várias flags. Alterar esses valores pode reutilizar saída antiga. Hit sync/preview também pode ter sua cópia removida pela limpeza do handler, reduzindo reutilização posterior. Não há chave completa ou invalidação por mudança de perfil.
+A chave inclui modelos ordenados (bytes e nomes), todos os settings, overrides, perfis multipart, conteúdo efetivo dos perfis resolvidos (incluindo herança) e SHA-256 do executável. Os perfis são resolvidos antes de cada lookup. Falha de serialização ou leitura do executável desativa o cache para aquela chamada. O preview preserva o controle de suporte, força apenas G-code e imagem; diferenças de representação podem gerar entradas distintas.
+
+Snapshots privados são publicados somente após cópia completa, em diretórios únicos. Cada hit recebe outra cópia independente, pertencente ao consumidor: remoção pelo handler, substituição, expiração e evicção não removem arquivos retornados a outros consumidores ou jobs. Falha ao copiar não transfere ownership do workdir de origem. A limpeza de órfãos remove somente diretórios `snapshot-*` inativos; diretórios legados podem exigir limpeza manual em ambiente isolado.
+
+Limites residuais: hash do executável e cópias acrescentam I/O por chamada; não há métricas de custo/hit. Bibliotecas externas, recursos implícitos do CLI, ambiente e alterações concorrentes de arquivos durante resolução/execução não são capturados como snapshot atômico. O índice não sobrevive a restart. Cópias entregues a jobs continuam sujeitas ao lifecycle de jobs, não ao TTL do cache; não há garantia de coleta completa de temporários.
 
 Em validações que mudem parâmetros, não aceite hit de cache como evidência de novo fatiamento. Em ambiente de teste isolado e sem processos ativos, reinicie o serviço e limpe somente seu diretório de cache de teste. Não elimine dados compartilhados sem autorização.
 

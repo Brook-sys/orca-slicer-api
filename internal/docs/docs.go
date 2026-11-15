@@ -184,7 +184,7 @@ const OpenAPI = `{
       "post": {
         "tags": ["Slicing"],
         "summary": "Gera preview JSON com thumbnail e detecção de suporte",
-        "description": "Executa slicing forçando enableSupport=true, detecta suporte no G-code e retorna JSON com usesSupport, metadata e thumbnail base64 PNG. Não retorna o G-code binário.",
+        "description": "Executa slicing preservando enableSupport (ausente mantém preset), forçando generateImage=true e exportType=gcode, detecta suporte no G-code e retorna JSON com usesSupport, metadata e thumbnail base64 PNG. Não retorna o G-code binário.",
         "requestBody": {
           "required": true,
           "content": {

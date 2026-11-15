@@ -3,6 +3,8 @@ package slicer
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 
 	"encoding/json"
 	"fmt"
@@ -63,14 +65,6 @@ func (s *Service) sliceInternal(ctx context.Context, jobID string, models []Mode
 		return Result{}, httpx.NewError(http.StatusBadRequest, "Model file is required")
 	}
 
-	cacheKey := ""
-	if s.ResultCache != nil {
-		cacheKey = s.ResultCache.makeModelsKey(models, settings)
-		if entry, ok := s.ResultCache.Get(cacheKey); ok {
-			return Result{Files: entry.Files, Workdir: entry.Workdir, Metadata: AggregateMetadata(entry.Files)}, nil
-		}
-	}
-
 	if s.State != nil {
 		_ = s.State.Set(JobState{Status: StatusProcessing, StartedAt: startedAt})
 	}
@@ -118,6 +112,20 @@ func (s *Service) sliceInternal(ctx context.Context, jobID string, models []Mode
 		s.setDebug(debug)
 		s.setFailed(startedAt, err.Error())
 		return Result{}, err
+	}
+	// Resolve profiles before lookup so edits to named profiles or their ancestors
+	// cannot reuse stale results. Hash the executable contents, not just its path.
+	cacheKey := ""
+	if s.ResultCache != nil {
+		cacheKey = s.resultCacheKey(models, settings, debug)
+		if cacheKey != "" {
+			if entry, ok := s.ResultCache.Get(cacheKey); ok {
+				_ = os.RemoveAll(workdir)
+				metadata := AggregateMetadata(entry.Files)
+				s.setState(JobState{Status: StatusCompleted, StartedAt: startedAt, FinishedAt: nowString(), Files: entry.Files, Metadata: metadata})
+				return Result{Files: entry.Files, Workdir: entry.Workdir, Metadata: metadata}, nil
+			}
+		}
 	}
 	defer func() {
 		debug.ResultJSON = readResultJSON(outputDir)
@@ -243,9 +251,9 @@ func (s *Service) sliceInternal(ctx context.Context, jobID string, models []Mode
 }
 
 func (s *Service) Preview(ctx context.Context, filename string, data []byte, settings Settings) (PreviewResult, error) {
-	trueVal := true
-	settings.EnableSupport = &trueVal
+	// Preview changes only the representation, never the support decision.
 	settings.GenerateImage = true
+	settings.ExportType = "gcode"
 
 	result, err := s.Slice(ctx, filename, data, settings)
 	if err != nil {
@@ -553,4 +561,28 @@ func optionalBrimLogValue(value *bool) string {
 		return "auto_brim"
 	}
 	return "no_brim"
+}
+
+func (s *Service) resultCacheKey(models []ModelInput, settings Settings, debug SliceDebug) string {
+	base := s.ResultCache.makeModelsKey(models, settings)
+	if base == "" {
+		return ""
+	}
+	executable, err := os.Open(s.OrcaSlicerPath)
+	if err != nil {
+		return ""
+	}
+	defer executable.Close()
+	digest := sha256.New()
+	if _, err := io.Copy(digest, executable); err != nil {
+		return ""
+	}
+	return cacheDigest(struct {
+		Version    int
+		Inputs     string
+		Executable string
+		Printer    map[string]any
+		Preset     map[string]any
+		Filaments  []map[string]any
+	}{1, base, hex.EncodeToString(digest.Sum(nil)), debug.Printer, debug.Preset, debug.Filaments})
 }
