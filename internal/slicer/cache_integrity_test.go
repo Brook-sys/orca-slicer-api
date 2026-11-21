@@ -121,10 +121,14 @@ func TestCacheCopiesSurviveConcurrentReplacementAndCleanup(t *testing.T) {
 func TestCacheCopyFailureNeverOwnsCallerDirectory(t *testing.T) {
 	base := t.TempDir()
 	blocked := filepath.Join(base, "file")
-	os.WriteFile(blocked, []byte("block"), 0600)
+	if err := os.WriteFile(blocked, []byte("block"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	c := NewPersistentResultCache(time.Nanosecond, 1, blocked)
 	source := filepath.Join(base, "result.gcode")
-	os.WriteFile(source, []byte("keep"), 0600)
+	if err := os.WriteFile(source, []byte("keep"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	c.Put("key", []string{source}, base)
 	c.Cleanup()
 	if _, err := os.Stat(source); err != nil {
@@ -279,7 +283,9 @@ func boolPointer(v bool) *bool { return &v }
 
 func TestServiceCacheKeyTracksResolvedProfilesAndExecutable(t *testing.T) {
 	exe := filepath.Join(t.TempDir(), "slicer")
-	os.WriteFile(exe, []byte("v1"), 0600)
+	if err := os.WriteFile(exe, []byte("v1"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	s := Service{OrcaSlicerPath: exe, ResultCache: NewResultCache(time.Hour, 1)}
 	models := []ModelInput{{Filename: "x.stl", Data: []byte("x")}}
 	debug := SliceDebug{Preset: map[string]any{"layer_height": "0.2"}}
@@ -289,7 +295,9 @@ func TestServiceCacheKeyTracksResolvedProfilesAndExecutable(t *testing.T) {
 		t.Fatal("resolved profile omitted")
 	}
 	key = s.resultCacheKey(models, Settings{}, debug)
-	os.WriteFile(exe, []byte("v2"), 0600)
+	if err := os.WriteFile(exe, []byte("v2"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	if s.resultCacheKey(models, Settings{}, debug) == key {
 		t.Fatal("executable omitted")
 	}
