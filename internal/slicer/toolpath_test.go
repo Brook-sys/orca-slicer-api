@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -230,6 +231,141 @@ func TestToolpathPreviewRejectsUnsupportedOrInvalidGeometry(t *testing.T) {
 		if _, err := extractToolpathPreview(context.Background(), writeToolpathFixture(t, content)); err == nil {
 			t.Fatalf("expected invalid input %q to fail", content)
 		}
+	}
+}
+
+func TestToolpathPreviewKlipperExtrusionConfiguration(t *testing.T) {
+	commands := []string{
+		"SET_RETRACTION RETRACT_LENGTH=0.3",
+		"SET_PRESSURE_ADVANCE ADVANCE=0.035 SMOOTH_TIME=0.04",
+	}
+	preamble := "PRINT_START EXTRUDER=210 BED=60\nG21\nG90\nM83\nSET_VELOCITY_LIMIT ACCEL=500\n"
+	motion := ";LAYER_CHANGE\n;Z:0.2\n;TYPE:Outer wall\nG1 X0 Y0 Z0.2 F1200\nG1 X10 Y0 E0.5\n"
+	for _, command := range append(append([]string{}, commands...), strings.Join(commands, "\n")) {
+		t.Run(command, func(t *testing.T) {
+			baseline, err := extractToolpathPreview(context.Background(), writeToolpathFixture(t, preamble+motion))
+			if err != nil {
+				t.Fatal(err)
+			}
+			preview, err := extractToolpathPreview(context.Background(), writeToolpathFixture(t, preamble+command+"\n"+motion+command+"\n"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantWarnings := append([]string{}, baseline.Warnings...)
+			for _, line := range strings.Split(command, "\n") {
+				name := strings.Fields(line)[0]
+				wantWarnings = append(wantWarnings, name+" firmware effects are not simulated; only explicit G-code motion is represented")
+			}
+			if !reflect.DeepEqual(preview.Warnings, wantWarnings) {
+				t.Fatalf("warnings must be explicit and deduplicated per command: got %q want %q", preview.Warnings, wantWarnings)
+			}
+			if !preview.SourceComplete || preview.TotalSegments != 1 || preview.SourceLines != baseline.SourceLines+2*len(strings.Split(command, "\n")) {
+				t.Fatalf("unexpected completeness/counts: %#v", preview)
+			}
+			// Only source accounting and warnings should change, not geometry,
+			// bounds, layers, feedrates, extrusion, attribution, or truncation.
+			preview.SourceBytes = baseline.SourceBytes
+			preview.SourceLines = baseline.SourceLines
+			preview.Warnings = baseline.Warnings
+			if !reflect.DeepEqual(preview, baseline) {
+				t.Fatalf("configuration changed preview: got %#v want %#v", preview, baseline)
+			}
+		})
+	}
+}
+
+func TestToolpathKlipperExtrusionConfigurationPreservesParserState(t *testing.T) {
+	for _, command := range []string{"SET_RETRACTION RETRACT_LENGTH=0.3", "SET_PRESSURE_ADVANCE ADVANCE=0.04"} {
+		t.Run(command, func(t *testing.T) {
+			p := toolpathParser{ctx: context.Background(), unitsScale: 1, currentLayer: -1, retainedLayer: -1, fallbackZ: math.NaN()}
+			// Exercise non-default units, origins, relative modes, tool and
+			// attribution, including wiping and pending layer metadata.
+			lines := []string{
+				"G20", "G90", "M82", "T2", "G1 X1 Y2 Z0.1 E3 F60", "G92 X0 Y0 Z0 E0",
+				"G91", "M83", ";TYPE:Support", "; printing object synthetic id:0 copy 0", ";WIPE_START", ";LAYER_CHANGE",
+				"G1 X0.1 Y0 E0.01", "G90", "M82", "G1 X0.2 Y0 E0.02", ";WIPE_END",
+			}
+			for _, line := range lines {
+				before := p
+				fallbackZ := p.fallbackZ
+				// fallbackZ begins as NaN, which reflect.DeepEqual cannot compare.
+				before.fallbackZ = 0
+				if err := p.parseLine(command); err != nil {
+					t.Fatal(err)
+				}
+				after := p
+				after.fallbackZ = 0
+				after.preview.Warnings = before.preview.Warnings
+				if !reflect.DeepEqual(after, before) || (p.fallbackZ != fallbackZ && !(math.IsNaN(p.fallbackZ) && math.IsNaN(fallbackZ))) {
+					t.Fatalf("configuration changed parser state before %q", line)
+				}
+				if err := p.parseLine(line); err != nil {
+					t.Fatalf("%s: %v", line, err)
+				}
+			}
+			if len(p.preview.Warnings) != 1 || p.preview.TotalSegments != 3 {
+				t.Fatalf("unexpected warnings or geometry: %#v", p.preview)
+			}
+		})
+	}
+}
+
+func TestToolpathPreviewKlipperConfigurationLineSyntax(t *testing.T) {
+	for _, command := range []string{"SET_RETRACTION RETRACT_LENGTH=0.3", "SET_PRESSURE_ADVANCE ADVANCE=0.04"} {
+		t.Run(command, func(t *testing.T) {
+			content := "; synthetic preamble\r\nN10 " + command + " *123 ; config\r\n\tN20 " + strings.ToLower(command) + " ; repeated\r\nG90\nM83\nG1 X1 E0.1\n"
+			preview, err := extractToolpathPreview(context.Background(), writeToolpathFixture(t, content))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if preview.SourceLines != 6 || preview.TotalSegments != 1 || len(preview.Warnings) != 1 {
+				t.Fatalf("line numbers/comments changed configuration handling: %#v", preview)
+			}
+		})
+	}
+}
+
+func TestToolpathPreviewKlipperConfigurationArgumentsAreNotValidated(t *testing.T) {
+	// This preview is not a firmware validator. Match the existing exact-name
+	// SET_VELOCITY_LIMIT skip, including absent and uninterpreted arguments.
+	for _, command := range []string{"SET_RETRACTION", "SET_PRESSURE_ADVANCE"} {
+		for _, args := range []string{"", " VALUE=firmware_specific", " ADVANCE=NaN RETRACT_LENGTH=bad", " X999 E999 F999"} {
+			t.Run(command+args, func(t *testing.T) {
+				preview, err := extractToolpathPreview(context.Background(), writeToolpathFixture(t, command+args+"\n"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if preview.TotalSegments != 0 || preview.Bounds != nil || len(preview.Warnings) != 1 {
+					t.Fatalf("configuration arguments became motion: %#v", preview)
+				}
+			})
+		}
+	}
+}
+
+func TestToolpathPreviewKlipperConfigurationDoesNotRelaxStrictErrors(t *testing.T) {
+	for _, invalid := range []struct{ line, message string }{
+		{"UNKNOWN_MACRO", "unsupported command UNKNOWN_MACRO"},
+		{"SET_RETRACTION_CUSTOM", "unsupported command SET_RETRACTION_CUSTOM"},
+		{"SET_PRESSURE_ADVANCE_CUSTOM", "unsupported command SET_PRESSURE_ADVANCE_CUSTOM"},
+		{"SET_GCODE_OFFSET", "unsupported command SET_GCODE_OFFSET"},
+		{"G10", "unsupported G-code command G10"},
+		{"G11", "unsupported G-code command G11"},
+		{"G5 X1 E1", "unsupported G-code command G5"},
+		{"M402", "unsupported M-code command M402"},
+		{"G1 Xbad E1", "invalid numeric word"},
+		{"G1 XNaN E1", "invalid numeric word"},
+		{"G1 X1 X2 E1", "duplicate X word"},
+		{"G1 X1 ADVANCE=0.1", "unsupported command word"},
+		{"G2 X1 Y1 E1", "arc requires R or I/J"},
+	} {
+		t.Run(invalid.line, func(t *testing.T) {
+			content := "SET_RETRACTION RETRACT_LENGTH=0.3\nSET_PRESSURE_ADVANCE ADVANCE=0.04\n; synthetic comment\nN40 " + invalid.line + " ; still invalid\n"
+			_, err := extractToolpathPreview(context.Background(), writeToolpathFixture(t, content))
+			if err == nil || !strings.Contains(err.Error(), "line 4: "+invalid.message) {
+				t.Fatalf("expected strict line-4 error %q, got %v", invalid.message, err)
+			}
+		})
 	}
 }
 

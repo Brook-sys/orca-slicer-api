@@ -78,7 +78,7 @@ Os números são ilustrativos. `printTime` está em segundos, massa em gramas, c
 - `layers` e seus `segments` são um **prefixo retido**: até 512 camadas e 20.000 segmentos no total. `truncated=true` informa omissão; `omittedSegments` quantifica segmentos não retornados. Isso pode ocorrer com `sourceComplete=true`.
 - `sourceComplete=true` só aparece depois da leitura completa dentro dos limites. Não há sucesso parcial quando a fonte excede um limite duro, contém comando não suportado ou estoura o trabalho de arcos.
 - Arcos G2/G3 no plano XY são linearizados com tolerância de corda de 0,05 mm, até 4.096 segmentos por movimento e orçamento global de 1.000.000 segmentos de tesselação com extrusão. O endpoint preserva o endpoint exato e distribui a extrusão.
-- G20/G21, G90/G91, M82/M83 e G92 são interpretados. Homing é assumido em zero para visualização. Macros de impressora e comandos Klipper de dinâmica não são expandidos; `warnings` registra essas limitações. Comandos de movimento desconhecidos falham fechado.
+- G20/G21, G90/G91, M82/M83 e G92 são interpretados. Homing é assumido em zero para visualização. Macros de impressora e comandos Klipper de dinâmica não são expandidos; `warnings` registra essas limitações. `SET_RETRACTION` e `SET_PRESSURE_ADVANCE` são reconhecidos como configuração de firmware: seus parâmetros não são coordenadas e seus efeitos não são simulados. Isso não valida parâmetros para execução no firmware. Comandos desconhecidos, inclusive transformações como `SET_GCODE_OFFSET`, continuam falhando fechado; não há descarte genérico de macros.
 
 ## Limites duros
 

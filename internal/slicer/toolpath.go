@@ -234,6 +234,13 @@ func (p *toolpathParser) parseLine(raw string) error {
 		p.warnOnce("Printer macros are not expanded (for example PRINT_START/PRINT_END); only explicit G-code motion is represented")
 		return nil
 	}
+	if command == "SET_RETRACTION" || command == "SET_PRESSURE_ADVANCE" {
+		// Like SET_VELOCITY_LIMIT, these exact configuration commands do not
+		// encode motion. Leave their firmware-specific arguments uninterpreted;
+		// accepting them here is not firmware syntax or value validation.
+		p.warnOnce(command + " firmware effects are not simulated; only explicit G-code motion is represented")
+		return nil
+	}
 	if command == "SET_VELOCITY_LIMIT" {
 		p.warnOnce("Klipper velocity/acceleration commands are not expanded; coordinates and commanded feedrates are still read from explicit motion")
 		return nil
