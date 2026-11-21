@@ -51,6 +51,67 @@ G1 X11 Y11 E0.2
 	}
 }
 
+func TestToolpathPreviewThumbnailPayloadIsNotEmbeddedCommand(t *testing.T) {
+	// VAAA is base64 data, not Orca's embedded ;V command syntax. Outer
+	// metadata is not required, and multiple independent thumbnails may occur.
+	block := "; thumbnail begin 160x160 4\n; VAAA\n; thumbnail end\n"
+	path := writeToolpathFixture(t, "; THUMBNAIL_BLOCK_START\n;\n"+block+block+"; THUMBNAIL_BLOCK_END\nM83\nG1 X1 E1\n")
+	preview, err := extractToolpathPreview(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !preview.SourceComplete || preview.TotalSegments != 1 || preview.Bounds.Max[0] != 1 {
+		t.Fatalf("thumbnail affected motion: %#v", preview)
+	}
+	for _, suffix := range []string{";V1\n", "; V motion\n"} {
+		_, err := extractToolpathPreview(context.Background(), writeToolpathFixture(t, block+suffix))
+		if err == nil || !strings.Contains(err.Error(), "embedded comment commands") {
+			t.Fatalf("embedded command outside thumbnail accepted: %q, %v", suffix, err)
+		}
+	}
+}
+
+func TestToolpathPreviewThumbnailBoundariesFailClosed(t *testing.T) {
+	begin := "; thumbnail begin 160x160 4\n"
+	for name, content := range map[string]string{
+		"empty":                 begin + "; thumbnail end\n",
+		"unclosed":              begin + "; VAAA\n",
+		"unclosed incomplete":   begin,
+		"nested":                begin + begin,
+		"stray end":             "; thumbnail end\n",
+		"bad dimensions":        "; thumbnail begin 160 4\n; VAAA\n; thumbnail end\n",
+		"zero dimensions":       "; thumbnail begin 0x160 4\n",
+		"missing length":        "; thumbnail begin 160x160\n",
+		"zero length":           "; thumbnail begin 160x160 0\n",
+		"huge length":           "; thumbnail begin 160x160 99999999999999999999\n",
+		"invalid length":        "; thumbnail begin 160x160 3\n",
+		"empty payload comment": begin + ";\n; VAAA\n; thumbnail end\n",
+		"blank payload line":    begin + "\n; VAAA\n; thumbnail end\n",
+		"short payload":         begin + "; VA\n; thumbnail end\n",
+		"long payload":          begin + "; VAAAAAAA\n; thumbnail end\n",
+		"invalid alphabet":      begin + "; V@AA\n; thumbnail end\n",
+		"invalid padding":       begin + "; =AAA\n; thumbnail end\n",
+		"data after padding":    begin + "; VA=A\n; thumbnail end\n",
+		"motion":                begin + "G1 X10 E1\n; VAAA\n; thumbnail end\n",
+		"inline begin":          "G1 X1 E1 ; thumbnail begin 160x160 4\n;VAAA\n",
+		"motion end":            begin + "; VAAA\nG1 X10 E1 ; thumbnail end\n",
+		"comment motion":        begin + "; G1 X10 E1\n; thumbnail end\n",
+		"outer marker only":     "; THUMBNAIL_BLOCK_START\n;VAAA\n; THUMBNAIL_BLOCK_END\n",
+		"premature outer end":   begin + "; THUMBNAIL_BLOCK_END\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			if preview, err := extractToolpathPreview(context.Background(), writeToolpathFixture(t, content)); err == nil {
+				t.Fatalf("malformed thumbnail accepted: %#v", preview)
+			}
+		})
+	}
+	for _, payload := range []string{"VAAA", "VAA=", "VA==", "VA\n; AA"} {
+		if _, err := extractToolpathPreview(context.Background(), writeToolpathFixture(t, begin+"; "+payload+"\n; thumbnail end\n")); err != nil {
+			t.Fatalf("valid base64 payload %q rejected: %v", payload, err)
+		}
+	}
+}
+
 func TestToolpathPreviewDoesNotTreatFeatureCommentsAsExtrusion(t *testing.T) {
 	path := writeToolpathFixture(t, ";TYPE:Support\n; support_material = 1\n;TYPE:Brim\nG1 X1 Y1\n")
 	preview, err := extractToolpathPreview(context.Background(), path)
@@ -140,6 +201,111 @@ G3 X0 Y1 I-1 J0 E1
 	}
 	if sum != 1 {
 		t.Fatalf("arc extrusion was not conserved: %v", sum)
+	}
+}
+
+func TestToolpathArcP1HelicalGeometryAndState(t *testing.T) {
+	for _, command := range []string{"G2", "G02", "G3", "G03"} {
+		for _, fullCircle := range []bool{false, true} {
+			for _, extruding := range []bool{false, true} {
+				name := fmt.Sprintf("%s/full=%t/extruding=%t", command, fullCircle, extruding)
+				t.Run(name, func(t *testing.T) {
+					p := toolpathParser{ctx: context.Background(), unitsScale: 1, currentLayer: -1, retainedLayer: -1, fallbackZ: math.NaN()}
+					for _, line := range []string{"G90", "M82", ";LAYER_CHANGE", "G1 X1 Y0 Z0.2", "G92 E5"} {
+						if err := p.parseLine(line); err != nil {
+							t.Fatal(err)
+						}
+					}
+					clockwise := command == "G2" || command == "G02"
+					end := [3]float64{0, 1, 1.2}
+					xy := "X0 Y1 "
+					if clockwise {
+						end[1], xy = -1, "X0 Y-1 "
+					}
+					if fullCircle {
+						end[0], end[1], xy = 1, 0, "" // Orca omits XY on a spiral lift.
+					}
+					eWord := ""
+					if extruding {
+						eWord = " E7"
+					}
+					if err := p.parseLine(command + " " + xy + "Z1.2 I-1 J0 P1 F600" + eWord); err != nil {
+						t.Fatal(err)
+					}
+					wantE := 0.0
+					if extruding {
+						wantE = 2
+					}
+					if p.position != end || p.extruderPosition != wantE || p.feedrate != 10 {
+						t.Fatalf("incorrect arc endpoint/state: position=%v E=%v F=%v", p.position, p.extruderPosition, p.feedrate)
+					}
+					segments := p.preview.Layers[0].Segments
+					if !extruding && len(segments) != 0 {
+						t.Fatal("travel arc must not create extrusion geometry")
+					}
+					if extruding {
+						if len(segments) < 2 || segments[0].From != [3]float64{1, 0, 0.2} || segments[len(segments)-1].To != end {
+							t.Fatalf("incorrect tessellation endpoints: %v", segments)
+						}
+						var sweep, sumE float64
+						for i, segment := range segments {
+							if i > 0 && segment.From != segments[i-1].To {
+								t.Fatal("discontinuous arc")
+							}
+							wantZ := 0.2 + float64(i+1)/float64(len(segments))
+							if math.Abs(segment.To[2]-wantZ) > 1e-12 || math.Abs(math.Hypot(segment.To[0], segment.To[1])-1) > 1e-12 {
+								t.Fatalf("incorrect helix interpolation: %v", segment)
+							}
+							a, b := segment.From, segment.To
+							sweep += math.Atan2(a[0]*b[1]-a[1]*b[0], a[0]*b[0]+a[1]*b[1])
+							sumE += segment.Extrusion
+						}
+						wantSweep := math.Pi / 2
+						if fullCircle {
+							wantSweep = 2 * math.Pi
+						}
+						if clockwise {
+							wantSweep = -wantSweep
+						}
+						if math.Abs(sweep-wantSweep) > 1e-12 || math.Abs(sumE-2) > 1e-12 {
+							t.Fatalf("P1 must not add a turn: sweep=%v extrusion=%v", sweep, sumE)
+						}
+					}
+					// The next extrusion starts at the helix endpoint, also after travel,
+					// and uses the unchanged absolute extrusion coordinate origin.
+					nextE := 6.0 + wantE
+					if err := p.parseLine(fmt.Sprintf("G1 X2 E%g", nextE)); err != nil {
+						t.Fatal(err)
+					}
+					segments = p.preview.Layers[0].Segments
+					last := segments[len(segments)-1]
+					if last.From != end || last.To != [3]float64{2, end[1], end[2]} || last.Extrusion != 1 {
+						t.Fatalf("incorrect continuation after arc: %v", last)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestToolpathArcPStrictRejections(t *testing.T) {
+	for _, command := range []string{"G2", "G02", "G3", "G03"} {
+		for _, words := range []string{"P0", "P-1", "P0.5", "P1.5", "P2", "PNaN", "PInf", "P1 P1", "P1 P2", "P1 Q1", "P1 K1", "P1 G1", "P1 X1 X2"} {
+			t.Run(command+"/"+words, func(t *testing.T) {
+				_, err := extractToolpathPreview(context.Background(), writeToolpathFixture(t, "G1 X1\n"+command+" I-1 J0 "+words+"\n"))
+				if err == nil {
+					t.Fatalf("must reject ambiguous/invalid arc words: %s", words)
+				}
+			})
+		}
+	}
+	for _, command := range []string{"G0", "G00", "G1", "G01", "G92", "G17", "G20", "G21", "G90", "G91", "M82", "M83", "T0", "G28", "G999", "UNKNOWN"} {
+		t.Run(command+"/P1", func(t *testing.T) {
+			_, err := extractToolpathPreview(context.Background(), writeToolpathFixture(t, command+" P1\n"))
+			if err == nil {
+				t.Fatalf("P compatibility must be limited to G2/G3, accepted %s", command)
+			}
+		})
 	}
 }
 

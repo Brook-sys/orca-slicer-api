@@ -100,6 +100,9 @@ type toolpathParser struct {
 	fallbackZ        float64
 	retainedSegments int
 	arcWork          int
+	thumbnailActive  bool
+	thumbnailLeft    int
+	thumbnailPadding int
 }
 
 var objectLabelPattern = regexp.MustCompile(`^(.*) id:([0-9]+) copy ([0-9]+)$`)
@@ -184,6 +187,10 @@ func extractToolpathPreview(ctx context.Context, path string) (ToolpathPreview, 
 	default:
 	}
 
+	if parser.thumbnailActive {
+		return ToolpathPreview{}, fmt.Errorf("unclosed thumbnail block")
+	}
+
 	parser.preview.SourceComplete = true
 	parser.preview.ReturnedLayers = len(parser.preview.Layers)
 	parser.preview.ReturnedSegments = 0
@@ -197,6 +204,14 @@ func extractToolpathPreview(ctx context.Context, path string) (ToolpathPreview, 
 
 func (p *toolpathParser) parseLine(raw string) error {
 	line := strings.TrimSpace(raw)
+	if p.thumbnailActive {
+		// Only full-line, base64 comments may be skipped. In particular, never
+		// hide executable motion or nested/malformed markers inside a thumbnail.
+		if !strings.HasPrefix(line, ";") {
+			return fmt.Errorf("expected thumbnail payload comment or end marker")
+		}
+		return p.parseThumbnailPayload(strings.TrimSpace(line[1:]))
+	}
 	if line == "" {
 		return nil
 	}
@@ -257,7 +272,11 @@ func (p *toolpathParser) parseLine(raw string) error {
 	if strings.HasPrefix(command, "M") && command != "M82" && command != "M83" {
 		return fmt.Errorf("unsupported M-code command %s", command)
 	}
-	args, err := parseMotionWords(fields[1:])
+	allowedWords := "XYZEFIJRH"
+	if command == "G2" || command == "G02" || command == "G3" || command == "G03" {
+		allowedWords += "P"
+	}
+	args, err := parseMotionWords(fields[1:], allowedWords)
 	if err != nil {
 		return err
 	}
@@ -353,14 +372,14 @@ func (p *toolpathParser) warnOnce(warning string) {
 	p.preview.Warnings = append(p.preview.Warnings, warning)
 }
 
-func parseMotionWords(fields []string) (map[byte]float64, error) {
+func parseMotionWords(fields []string, allowedWords string) (map[byte]float64, error) {
 	args := make(map[byte]float64, len(fields))
 	for _, field := range fields {
 		if len(field) < 2 {
 			return nil, fmt.Errorf("invalid command word %q", field)
 		}
 		letter := field[0]
-		if !strings.ContainsRune("XYZEFIJRH", rune(letter)) {
+		if !strings.ContainsRune(allowedWords, rune(letter)) {
 			return nil, fmt.Errorf("unsupported command word %q", field)
 		}
 		if _, duplicate := args[letter]; duplicate {
@@ -375,7 +394,75 @@ func parseMotionWords(fields []string) (map[byte]float64, error) {
 	return args, nil
 }
 
+// Recognize only the actual Orca/Prusa PNG thumbnail envelope, not the outer
+// THUMBNAIL_BLOCK_START/END metadata. No image is decoded or buffered: the
+// declared encoded length and base64 alphabet are checked within source limits.
+func (p *toolpathParser) beginThumbnail(comment string) error {
+	fields := strings.Fields(comment)
+	if len(fields) != 4 || fields[0] != "thumbnail" || fields[1] != "begin" {
+		return fmt.Errorf("malformed or unexpected thumbnail marker")
+	}
+	dimensions := strings.Split(fields[2], "x")
+	if len(dimensions) != 2 {
+		return fmt.Errorf("invalid thumbnail dimensions")
+	}
+	for _, dimension := range dimensions {
+		if _, err := parseThumbnailPositiveInt(dimension); err != nil {
+			return err
+		}
+	}
+	size, err := parseThumbnailPositiveInt(fields[3])
+	if err != nil || size%4 != 0 {
+		return fmt.Errorf("invalid thumbnail encoded length")
+	}
+	p.thumbnailActive = true
+	p.thumbnailLeft = size
+	p.thumbnailPadding = 0
+	return nil
+}
+
+func parseThumbnailPositiveInt(word string) (int, error) {
+	for _, char := range word {
+		if char < '0' || char > '9' {
+			return 0, fmt.Errorf("invalid thumbnail integer")
+		}
+	}
+	value, err := strconv.Atoi(word)
+	if err != nil || value <= 0 || value > maxToolpathSourceBytes {
+		return 0, fmt.Errorf("thumbnail integer outside preview limits")
+	}
+	return value, nil
+}
+
+func (p *toolpathParser) parseThumbnailPayload(comment string) error {
+	if comment == "thumbnail end" {
+		if p.thumbnailLeft != 0 {
+			return fmt.Errorf("thumbnail payload length does not match declaration")
+		}
+		p.thumbnailActive = false
+		return nil
+	}
+	if comment == "" || len(comment) > p.thumbnailLeft {
+		return fmt.Errorf("empty or oversized thumbnail payload")
+	}
+	for _, char := range comment {
+		if char == '=' {
+			p.thumbnailPadding++
+			if p.thumbnailPadding > 2 || p.thumbnailLeft > 2 {
+				return fmt.Errorf("invalid thumbnail base64 padding")
+			}
+		} else if p.thumbnailPadding != 0 || !(char >= 'A' && char <= 'Z' || char >= 'a' && char <= 'z' || char >= '0' && char <= '9' || char == '+' || char == '/') {
+			return fmt.Errorf("invalid thumbnail base64 payload or nested marker")
+		}
+		p.thumbnailLeft--
+	}
+	return nil
+}
+
 func (p *toolpathParser) parseComment(comment string) error {
+	if fields := strings.Fields(comment); len(fields) > 0 && fields[0] == "thumbnail" {
+		return p.beginThumbnail(comment)
+	}
 	if strings.HasPrefix(comment, "V") {
 		return fmt.Errorf("embedded comment commands (;V...) are not supported")
 	}
@@ -509,6 +596,14 @@ func (p *toolpathParser) linearMove(args map[byte]float64) error {
 }
 
 func (p *toolpathParser) arcMove(args map[byte]float64, clockwise bool) error {
+	// Orca 2.5.0 GCodeWriter::_spiral_travel_to_z emits P1 for a single
+	// spiral lift. Klipper's klippy/extras/gcode_arcs.py does not read P:
+	// the XY endpoint determines the sweep (one turn for coincident XY),
+	// while Z is interpolated. Accept only this compatibility value; other
+	// values have firmware-dependent multi-turn semantics, not simulated here.
+	if turns, found := args['P']; found && turns != 1 {
+		return fmt.Errorf("only P1 is supported on G2/G3 arcs")
+	}
 	target, extruder, err := p.target(args)
 	if err != nil {
 		return err
