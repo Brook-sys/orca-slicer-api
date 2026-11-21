@@ -2,6 +2,7 @@ package slicer
 
 import (
 	"archive/zip"
+	"bufio"
 	"io"
 	"os"
 	"regexp"
@@ -21,11 +22,38 @@ func ExtractMetadata(path string) Metadata {
 	if strings.HasSuffix(strings.ToLower(path), ".3mf") {
 		return extract3MFMetadata(path)
 	}
-	data, err := os.ReadFile(path)
+	file, err := os.Open(path)
 	if err != nil {
 		return Metadata{}
 	}
-	return ParseMetadata(string(data))
+	defer file.Close()
+
+	metadata := Metadata{}
+	haveTime, haveMM, haveG := false, false, false
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 64*1024), maxToolpathLineBytes)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(strings.TrimSpace(line), ";") {
+			continue
+		}
+		item := ParseMetadata(line)
+		if !haveTime && item.PrintTimeSeconds != 0 {
+			metadata.PrintTimeSeconds = item.PrintTimeSeconds
+			haveTime = true
+		}
+		if !haveMM && item.FilamentUsedMM != 0 {
+			metadata.FilamentUsedMM = item.FilamentUsedMM
+			haveMM = true
+		}
+		if !haveG && item.FilamentUsedG != 0 {
+			metadata.FilamentUsedG = item.FilamentUsedG
+			haveG = true
+		}
+	}
+	// Metadata is supplementary: unreadable or overlong lines produce zero or
+	// partial estimates rather than changing slicing success.
+	return metadata
 }
 
 func ParseMetadata(content string) Metadata {

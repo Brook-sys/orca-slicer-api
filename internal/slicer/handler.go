@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/Brook-sys/orca-slicer-api/internal/httpx"
@@ -125,41 +127,10 @@ func (h Handler) Slice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Support multiple files via "files" key, fallback to single "file"
-	files := r.MultipartForm.File["files"]
-	if len(files) == 0 {
-		if f := r.MultipartForm.File["file"]; len(f) > 0 {
-			files = f
-		}
-	}
-
-	if len(files) == 0 {
-		httpx.WriteError(w, httpx.NewError(http.StatusBadRequest, "Model file is required"))
+	models, err := modelsFromMultipart(r)
+	if err != nil {
+		httpx.WriteError(w, err)
 		return
-	}
-
-	models := make([]ModelInput, 0, len(files))
-	for _, fh := range files {
-		if !validModelFile(fh.Filename) {
-			httpx.WriteError(w, httpx.NewError(http.StatusBadRequest, "Invalid file type. Only STL, STEP and 3MF files are allowed"))
-			return
-		}
-		f, err := fh.Open()
-		if err != nil {
-			httpx.WriteError(w, err)
-			return
-		}
-		data, err := io.ReadAll(io.LimitReader(f, maxModelSize+1))
-		f.Close()
-		if err != nil {
-			httpx.WriteError(w, err)
-			return
-		}
-		if len(data) > maxModelSize {
-			httpx.WriteError(w, httpx.NewError(http.StatusBadRequest, "Model file is too large"))
-			return
-		}
-		models = append(models, ModelInput{Filename: fh.Filename, Data: data})
 	}
 
 	settings, err := parseSettings(r, serviceGenerateImage(h.Service), serviceResolveProfiles(h.Service), serviceSanitizeProfiles(h.Service))
@@ -236,25 +207,9 @@ func (h Handler) Preview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		httpx.WriteError(w, httpx.NewError(http.StatusBadRequest, "Model file is required"))
-		return
-	}
-	defer file.Close()
-
-	if !validModelFile(header.Filename) {
-		httpx.WriteError(w, httpx.NewError(http.StatusBadRequest, "Invalid file type. Only STL, STEP and 3MF files are allowed"))
-		return
-	}
-
-	data, err := io.ReadAll(io.LimitReader(file, maxModelSize+1))
+	models, err := modelsFromMultipart(r)
 	if err != nil {
 		httpx.WriteError(w, err)
-		return
-	}
-	if len(data) > maxModelSize {
-		httpx.WriteError(w, httpx.NewError(http.StatusBadRequest, "Model file is too large"))
 		return
 	}
 
@@ -268,7 +223,7 @@ func (h Handler) Preview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.Service.Preview(r.Context(), header.Filename, data, settings)
+	result, err := h.Service.Preview(r.Context(), models[0].Filename, models[0].Data, settings)
 	if err != nil {
 		httpx.WriteError(w, err)
 		return
@@ -281,6 +236,8 @@ func (h Handler) Preview(w http.ResponseWriter, r *http.Request) {
 		"filamentUsedG":  result.FilamentUsedG,
 		"filamentUsedMm": result.FilamentUsedMm,
 		"thumbnail":      result.ThumbnailBase64,
+		"quantity":       result.Quantity,
+		"toolpaths":      result.Toolpaths,
 	})
 }
 
@@ -291,6 +248,7 @@ func parseSettings(r *http.Request, defaultGenerateImage bool, defaultResolvePro
 		Filament:              r.FormValue("filament"),
 		BedType:               r.FormValue("bedType"),
 		Plate:                 r.FormValue("plate"),
+		Quantity:              1,
 		Arrange:               parseBool(r.FormValue("arrange")),
 		Orient:                parseBool(r.FormValue("orient")),
 		ExportType:            r.FormValue("exportType"),
@@ -304,8 +262,29 @@ func parseSettings(r *http.Request, defaultGenerateImage bool, defaultResolvePro
 		Overrides:             map[string]map[string]any{},
 	}
 
-	if settings.ExportType != "" && settings.ExportType != "gcode" && settings.ExportType != "3mf" {
-		return Settings{}, httpx.NewError(http.StatusBadRequest, "exportType must be gcode or 3mf")
+	if raw := r.FormValue("quantity"); raw != "" {
+		quantity, err := strconv.Atoi(raw)
+		if err != nil {
+			return Settings{}, httpx.NewError(http.StatusBadRequest, "quantity must be an integer")
+		}
+		if quantity < 1 || quantity > maxSliceQuantity {
+			return Settings{}, httpx.NewError(http.StatusBadRequest, "quantity must be an integer between 1 and 512")
+		}
+		settings.Quantity = quantity
+	}
+	for name, target := range map[string]**float64{"rotate": &settings.Rotate, "rotateX": &settings.RotateX, "rotateY": &settings.RotateY} {
+		value, err := parseOptionalFloat(r.FormValue(name), name)
+		if err != nil {
+			return Settings{}, err
+		}
+		*target = value
+	}
+	arrangeSpacing, err := parseOptionalFloat(r.FormValue("arrangeSpacing"), "arrangeSpacing")
+	if err != nil {
+		return Settings{}, err
+	}
+	if arrangeSpacing != nil {
+		settings.ArrangeSpacing = *arrangeSpacing
 	}
 
 	if raw := r.FormValue("overrides"); raw != "" {
@@ -314,7 +293,18 @@ func parseSettings(r *http.Request, defaultGenerateImage bool, defaultResolvePro
 		}
 	}
 
-	return settings, nil
+	return normalizeSliceSettings(settings)
+}
+
+func parseOptionalFloat(raw string, name string) (*float64, error) {
+	if raw == "" {
+		return nil, nil
+	}
+	value, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return nil, httpx.NewError(http.StatusBadRequest, name+" must be a number")
+	}
+	return &value, nil
 }
 
 func parseUploadedProfiles(r *http.Request, settings *Settings) error {
@@ -380,18 +370,22 @@ func readJSONProfileParts(r *http.Request, field string) ([]map[string]any, erro
 }
 
 func modelsFromMultipart(r *http.Request) ([]ModelInput, error) {
-	files := r.MultipartForm.File["files"]
-	if len(files) == 0 {
-		files = r.MultipartForm.File["file"]
+	if r.MultipartForm == nil {
+		return nil, httpx.NewError(http.StatusBadRequest, "Model file is required")
 	}
+	files := append([]*multipart.FileHeader(nil), r.MultipartForm.File["file"]...)
+	files = append(files, r.MultipartForm.File["files"]...)
 	if len(files) == 0 {
 		return nil, httpx.NewError(http.StatusBadRequest, "Model file is required")
+	}
+	if len(files) != 1 {
+		return nil, httpx.NewError(http.StatusBadRequest, "Exactly one STL file is required; multiple models are not supported")
 	}
 
 	models := make([]ModelInput, 0, len(files))
 	for _, header := range files {
 		if !validModelFile(header.Filename) {
-			return nil, httpx.NewError(http.StatusBadRequest, "Invalid file type. Only STL, STEP and 3MF files are allowed")
+			return nil, httpx.NewError(http.StatusBadRequest, "Invalid file type. Exactly one STL file is required; STEP and 3MF are not supported")
 		}
 		file, err := header.Open()
 		if err != nil {
@@ -414,8 +408,7 @@ func modelsFromMultipart(r *http.Request) ([]ModelInput, error) {
 }
 
 func validModelFile(name string) bool {
-	ext := strings.ToLower(filepath.Ext(name))
-	return ext == ".stl" || ext == ".step" || ext == ".stp" || ext == ".3mf"
+	return strings.EqualFold(filepath.Ext(name), ".stl")
 }
 
 func serviceGenerateImage(service *Service) bool {

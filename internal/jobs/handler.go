@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/Brook-sys/orca-slicer-api/internal/httpx"
@@ -45,6 +47,10 @@ func (h Handler) DownloadJob(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, httpx.NewError(http.StatusBadRequest, "Job is not completed yet"))
 		return
 	}
+	if len(job.ResultFiles) != 1 || !strings.EqualFold(filepath.Ext(job.ResultFiles[0]), ".gcode") {
+		httpx.WriteError(w, httpx.NewError(http.StatusInternalServerError, "Job result must contain exactly one G-code file"))
+		return
+	}
 
 	file, err := os.Open(job.ResultFiles[0])
 	if err != nil {
@@ -53,8 +59,8 @@ func (h Handler) DownloadJob(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	w.Header().Set("Content-Disposition", `attachment; filename="`+file.Name()+`"`)
-	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+filepath.Base(file.Name())+`"`)
+	w.Header().Set("Content-Type", "application/x-gcode")
 	http.ServeContent(w, r, file.Name(), job.UpdatedAt, file)
 }
 

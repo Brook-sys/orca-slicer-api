@@ -1,16 +1,18 @@
 # Visão geral
 
-A API Go recebe modelos e perfis, prepara arquivos temporários e executa o OrcaSlicer CLI. Não implementa o motor de fatiamento. A imagem é somente `linux/amd64`.
+A API Go recebe um STL e perfis, prepara arquivos temporários e executa o OrcaSlicer CLI. Não implementa o motor de fatiamento. A imagem é somente `linux/amd64`.
 
 ## Disponível no código
 
 - CRUD de perfis em disco, import HTTPS e atualização manual da fonte.
 - Aliases e resolução recursiva de perfis nomeados com overrides temporários.
-- Slicing sync, jobs async, múltiplos modelos e export G-code/3MF.
-- Preview por fatiamento real, estimativas e miniatura gerada pela API.
+- Slicing sync/async de **exatamente um STL**, quantidade de 1 a 512 e somente G-code da mesa 1.
+- Validação de `plate_1.gcode`, manifesto e estatísticas, sem redução de quantidade, mesas extras, ZIP ou 3MF.
+- Preview por fatiamento real, estimativas, miniatura e toolpaths limitados extraídos do G-code.
+- Cache com snapshots de evidência e revalidação do contrato de saída em cada hit, sem hash do snapshot ou validação semântica do G-code.
 - Estado/debug persistidos, métricas JSON, OpenAPI e Swagger UI manuais.
 
-Não há autenticação, isolamento por usuário, fila de espera, slicing paralelo ou recuperação durável de downloads após restart. Cache e listagem built-in têm limitações relevantes; consulte [operação](operations.md) e [perfis](profiles.md).
+Não há autenticação, isolamento por usuário, fila de espera, slicing paralelo ou recuperação durável de downloads após restart. Consulte [operação](operations.md) e [perfis](profiles.md).
 
 ## Perfis
 
@@ -18,14 +20,22 @@ Nomeados (`printer`, `preset`, `filament`): busca em dados do usuário e JSON ve
 
 Diretos (`printerProfile`, `presetProfile`, `filamentProfile`): JSON multipart temporário, prioritário sobre o nome; não resolve herança. Envie perfis completos/planos.
 
-## Evidência da atualização 2.5.0
+O AppImage inspecionado contém 6 JSON e 72 caches `.opc` internos. O upstream da mesma tag contém 14.813 JSON; o stage `vendorprofiles` fornece a raiz separada `/app/profiles-json/resources/profiles`. O catálogo HTTP built-in não percorre o layout vendor normal e pode retornar 404; resolução recursiva por nome é outra operação.
 
-AppImage inspecionado: 6 JSON + 72 caches `.opc` cereal internos. O upstream da mesma tag contém 14.813 JSON; o stage `vendorprofiles` fornece raiz separada `/app/profiles-json/resources/profiles`. O catálogo HTTP built-in ainda não percorre o layout vendor e retorna 404 nesse layout normal; resolução recursiva por nome é outra operação.
+## Evidência de execução real 2.5.0
 
-Houve sucesso de slice real no AppImage original 2.5.0 com três perfis achatados pela API: entrada STL de 297.684 bytes, 5.952 triângulos, CLI código 0, duração reportada de slice 1 segundo, 104 camadas, 340,83 mm de filamento, estimativa de impressão 6 min 52 s, G-code de 761.315 bytes e mesa a 60 °C.
+Foi executado o AppImage oficial OrcaSlicer 2.5.0, SHA-256 `d13eb0a9cd618ed080ab6b82c64c0a60c4501aac91e88d5ac2c3b526fb141a7c`, associado ao source commit `40ecc66f78ed72dc368e0c1ebe40d77f00cc8a19`, com perfis de teste e STLs sintéticos. A validação HTTP local cobriu:
 
-A referência 2.4.0 fornecida tinha 75 camadas, 343,70 mm e estimativa 4 min 24 s. **Não houve equivalência de saída**, e não há validação de impressão física. Esse teste valida resolução pela API + execução do CLI, não o fluxo HTTP completo ou a imagem final.
+- sync e async com três cubos, três identidades no mesmo `plate_1.gcode`, `application/x-gcode` e nenhum ZIP;
+- quatro peças que couberam exatamente na mesa e overflow de doze, no qual o Orca produziu quatro: sync retornou 422 e async terminou failed, ambos sem download parcial;
+- preview de três cubos com 33 camadas, 1.029 segmentos, três identidades, fonte completa e sem truncamento;
+- rotações reais X/Y/Z com dimensões compatíveis com a permuta dos eixos dentro da tolerância de 0,45 mm do teste e sem perda da geometria abaixo de Z=0 após `--ensure-on-bed`;
+- suporte real com 2.095 segmentos de suporte e brim separado com 295 segmentos;
+- caso com 21.834 segmentos, dos quais 20.000 foram retidos e 1.834 reportados como omitidos, mantendo `sourceComplete=true`;
+- rejeições 400 para quantidade inválida, múltiplos STLs, mesa adicional, 3MF, espaçamento positivo e `orient` com rotação.
 
-Repetindo o STL com `arrange=false` (default), também houve código 0: 104 camadas, 341,04 mm, estimativa 6 min 50 s e mesa a 60 °C. Em teste sintético separado, um cubo posicionado na origem fora da área imprimível falhou com -102 sem arrange e passou com arrange. É uma restrição de posicionamento geométrico, não evidência de regressão geral do default. O default continua false.
+Regressões automatizadas também cobrem cache sem manifesto/estatísticas, mesa errada, identidades duplicadas, G-code vazio, G92, bounds após truncamento e orçamento global de arcos.
 
-Correção enviada para build; isso não é confirmação de build final, publicação concluída ou deploy. A validação ponta a ponta continua pendente. Propostas futuras ficam apenas no [roadmap](../ROADMAP.md).
+Esses resultados são evidência de compatibilidade dos caminhos testados, **não prova de ausência de colisões, impressão física segura, equivalência com 2.4.0 ou robustez sob produção**. A contagem exata e uma única mesa não substituem inspeção geométrica. Nenhuma impressora foi acionada.
+
+A validação HTTP local não comprova imagem final de contêiner, publicação ou deploy; essas etapas exigem evidência própria. Propostas futuras ficam no [roadmap](../ROADMAP.md).

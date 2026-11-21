@@ -11,8 +11,13 @@ type Settings struct {
 	Filament              string                    `json:"filament"`
 	BedType               string                    `json:"bedType"`
 	Plate                 string                    `json:"plate"`
+	Quantity              int                       `json:"quantity"`
 	Arrange               bool                      `json:"arrange"`
+	ArrangeSpacing        float64                   `json:"arrangeSpacing"`
 	Orient                bool                      `json:"orient"`
+	Rotate                *float64                  `json:"rotate"`
+	RotateX               *float64                  `json:"rotateX"`
+	RotateY               *float64                  `json:"rotateY"`
 	ExportType            string                    `json:"exportType"`
 	MulticolorOnePlate    bool                      `json:"multicolorOnePlate"`
 	ResolveProfiles       bool                      `json:"resolveProfiles"`
@@ -34,9 +39,11 @@ type Metadata struct {
 }
 
 type Result struct {
-	Files    []string
-	Workdir  string
-	Metadata Metadata
+	Files      []string
+	Workdir    string
+	Metadata   Metadata
+	Quantity   int
+	Statistics SliceStatistics
 }
 
 type PreviewResult struct {
@@ -45,5 +52,7 @@ type PreviewResult struct {
 	FilamentUsedG    float64
 	FilamentUsedMm   float64
 	ThumbnailBase64  string
+	Toolpaths        ToolpathPreview
+	Quantity         int
 	Workdir          string
 }

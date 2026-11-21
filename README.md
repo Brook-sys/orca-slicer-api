@@ -1,8 +1,8 @@
 # Orca Slicer API
 
-API REST em **Go 1.23, somente biblioteca padrão**, que gerencia perfis JSON e executa o OrcaSlicer CLI. Oferece fatiamento síncrono, jobs assíncronos, múltiplos modelos, prévia com metadados e miniaturas geradas pela API. Não é uma fila distribuída nem um serviço multiusuário isolado.
+API REST em **Go 1.23, somente biblioteca padrão**, que gerencia perfis JSON e executa o OrcaSlicer CLI. Oferece fatiamento síncrono e assíncrono de um STL por chamada, quantidade exata na mesa 1, prévia com toolpaths limitados, metadados e miniaturas geradas pela API. Não é uma fila distribuída nem um serviço multiusuário isolado.
 
-> **Estado da atualização 2.5.0:** correção de compatibilidade enviada para build. Há sucesso de CLI com perfis achatados pela API, em cubo e STL de 5.952 triângulos; o fluxo HTTP completo e a imagem final ainda precisam de validação. Não houve equivalência com a referência 2.4.0 nem impressão física validada. Este documento não atesta publicação concluída ou deploy. Veja [evidências e limites](docs/api/overview.md).
+> **Estado da validação 2.5.0:** o AppImage oficial foi exercitado por HTTP local com STLs sintéticos, cobrindo sync/async, quantidade e overflow, rotações, suporte/brim, preview e truncamento. A validação local não comprova imagem final, publicação ou deploy; cada etapa exige evidência própria. Equivalência com 2.4.0 e impressão física não foram validados. Veja [evidências e limites](docs/api/overview.md).
 
 ## Primeiros passos
 
@@ -71,7 +71,7 @@ curl --fail-with-body http://localhost:3000/slice \
   -D resultado.headers -o resultado.gcode
 ```
 
-Confira o HTTP, o arquivo e os metadados antes de imprimir. Múltiplos resultados retornam ZIP. Não envie um resultado à impressora sem revisar dimensões, temperaturas, movimentos e compatibilidade dos perfis.
+Confira o HTTP, `X-Slice-Quantity`, `X-Slice-Plate: 1`, o G-code e os metadados antes de imprimir. O contrato não retorna ZIP nem resultado parcial; se a quantidade não couber na mesa 1, reduza `quantity` após o erro 422. Não envie um resultado à impressora sem revisar dimensões, temperaturas, movimentos e compatibilidade dos perfis.
 
 ## Compatibilidade de perfis no OrcaSlicer 2.5.0
 
@@ -85,11 +85,12 @@ Confira o HTTP, o arquivo e os metadados antes de imprimir. Múltiplos resultado
 
 ## Capacidades e limites
 
-- `/slice` e `/slice/async` aceitam STL, STEP/STP e 3MF; vários campos `files` permitem múltiplos modelos.
+- `/slice`, `/slice/async` e `/slice/preview` aceitam exatamente um STL. `quantity` vai de 1 a 512, inclui o original e exige `arrange=true` acima de 1. Só há saída `plate_1.gcode`; múltiplos modelos, STEP/3MF, ZIP e mesas adicionais são rejeitados.
+- Quando o CLI conclui com sucesso e a validação detecta quantidade ou mesas divergentes, sync/preview retornam 422. Se o próprio CLI falhar, a resposta é 500; no async, ambos aparecem como job `failed` após o 202. Não há G-code parcial. Manifesto/estatísticas e identidades são validados, mas isso não prova ausência de colisões.
 - Um único fatiamento por processo, inclusive preview. Chamadas concorrentes recebem `409`; um job async concorrente pode ser aceito e depois falhar. **Não existe fila de espera.**
-- Preview executa fatiamento real, preserva suporte solicitado/preset e força G-code com thumbnail; não é análise gratuita ou garantia de necessidade física de suporte.
-- Jobs persistem metadados, mas resultados não são recuperados para download após reinício. O download async entrega apenas o primeiro arquivo.
-- Cache existe, mas a chave não inclui todos os parâmetros nem o conteúdo atualizado dos perfis. Pode reutilizar resultado inadequado; não confie nele para validar alterações de configuração.
+- Preview executa fatiamento real, preserva suporte solicitado/preset e extrai toolpaths do G-code com limites e truncamento explícito. O thumbnail é separado e não representa o arranjo final.
+- Jobs persistem metadados, mas resultados não são recuperados para download após reinício. O download async entrega o único G-code validado.
+- A chave de cache inclui settings, modelo, perfis efetivos e executável; cada hit revalida o contrato de arquivo/mesa/quantidade, sem hash do snapshot ou análise semântica do G-code. Recursos implícitos/ambiente do CLI não são capturados, e hit não comprova nova execução.
 - Listagem de built-ins não percorre toda a árvore vendor; pode retornar `404` mesmo quando a resolução por nome funciona.
 - Limite de modelo é 100.000.000 bytes **por arquivo**. Não há teto global de requisição, quota de disco ou proteção de carga implementados.
 

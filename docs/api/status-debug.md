@@ -13,7 +13,7 @@ Diagnóstico global persistido em `DATA_PATH/slice-debug.json`. Campos possívei
 - `startedAt`, `finishedAt`, `workdir`, `inputPath`, `outputDir`.
 - `command`, `args`, `settings`.
 - `printer`, `preset`, `filament`, `filaments`: perfis temporários efetivos.
-- `output`: stdout/stderr combinado; `slicerError`: erro do resultado do Orca.
+- `output`: stdout/stderr combinado, retido até 1 MiB com marcador de truncamento; `slicerError`: erro do resultado do Orca.
 - **`resultJson`**: objeto do arquivo `result.json` do CLI; não `resultJSON`.
 - `files`, `errorMessage`.
 

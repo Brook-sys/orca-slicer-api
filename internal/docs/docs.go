@@ -15,7 +15,8 @@ const OpenAPI = `{
     { "name": "Profiles", "description": "CRUD/importação de profiles JSON" },
     { "name": "Aliases", "description": "Aliases para resolução de nomes de profiles" },
     { "name": "Resolve", "description": "Resolução de inherits, built-ins e overrides" },
-    { "name": "Slicing", "description": "Slicing, preview, status e debug" },
+    { "name": "Slicing", "description": "Slicing estrito de um STL, preview, status e debug" },
+    { "name": "Jobs", "description": "Consulta, download e cancelamento de jobs assíncronos" },
     { "name": "Docs", "description": "OpenAPI e Swagger UI" }
   ],
   "paths": {
@@ -142,49 +143,31 @@ const OpenAPI = `{
     "/slice": {
       "post": {
         "tags": ["Slicing"],
-        "summary": "Executa slicing síncrono",
-        "description": "Executa OrcaSlicer CLI com profiles por nome ou JSON multipart. Aplica overrides temporários como enableSupport, brimType e printSequenceByObject sem modificar profiles salvos.",
+        "summary": "Fatia exatamente um STL e retorna um G-code da mesa 1",
+        "description": "Executa OrcaSlicer 2.5.0 com --slice 1, --clone-objects N e --export-statistics. Exige exatamente a quantidade solicitada em plate_1.gcode; nunca reduz quantity, entrega mesas adicionais, ZIP ou 3MF. Perfis e overrides são temporários.",
         "requestBody": {
           "required": true,
           "content": {
             "multipart/form-data": {
-              "schema": {
-                "type": "object",
-                "required": ["file"],
-                "properties": {
-                  "file": { "type": "string", "format": "binary" },
-                  "printerProfile": { "type": "string", "format": "binary", "description": "Profile JSON cru da impressora. Se enviado, tem prioridade sobre printer." },
-                  "presetProfile": { "type": "string", "format": "binary", "description": "Profile JSON cru do process/preset. Se enviado, tem prioridade sobre preset." },
-                  "filamentProfile": { "type": "array", "items": { "type": "string", "format": "binary" }, "description": "Um ou mais profile JSON crus de filamento. Se enviado, tem prioridade sobre filament." },
-                  "printer": { "type": "string", "description": "Nome de profile salvo em /profiles/printers. Ignorado quando printerProfile é enviado." },
-                  "preset": { "type": "string", "description": "Nome de profile salvo em /profiles/presets. Ignorado quando presetProfile é enviado." },
-                  "filament": { "type": "string", "description": "Nome de profile salvo em /profiles/filaments. Ignorado quando filamentProfile é enviado." },
-                  "bedType": { "type": "string" },
-                  "plate": { "type": "string" },
-                  "arrange": { "type": "boolean" },
-                  "orient": { "type": "boolean" },
-                  "exportType": { "type": "string", "enum": ["gcode", "3mf"] },
-                  "multicolorOnePlate": { "type": "boolean" },
-                  "resolveProfiles": { "type": "boolean", "description": "Quando true, resolve inherits/built-ins para profiles selecionados por nome antes do slicing. Não afeta printerProfile/presetProfile/filamentProfile enviados como arquivo." },
-                  "sanitizeProfiles": { "type": "boolean", "description": "Quando true, ajusta campos conhecidos por quebrar o Orca CLI apenas nos profiles temporários: define from=system em todos os profiles e remove small_perimeter_speed em presets." },
-                  "generateImage": { "type": "boolean", "description": "Quando true, gera thumbnail PNG 160x160 do modelo STL e injeta no G-code no formato esperado pelo Elegoo Neptune 4. Modelo em #22948a, fundo transparente." },
-                  "enableSupport": { "type": "boolean", "description": "Quando definido (true/false), injeta enable_support no preset temporário. Sobrescreve o valor do preset salvo. Permite ativar/desativar suportes por chamada sem alterar o profile salvo." },
-                  "brimType": { "type": "boolean", "description": "Quando definido (true/false), injeta brim_type no preset temporário: true=auto_brim, false=no_brim. Permite controlar brim por chamada sem alterar o profile salvo." },
-                  "printSequenceByObject": { "type": "boolean", "description": "Quando true, injeta print_sequence=by object no preset temporário. Quando false (padrão), injeta print_sequence=by layer. Permite controlar sequência de impressão por chamada sem alterar o profile salvo." },
-                  "overrides": { "type": "string", "description": "JSON string com overrides por printer/preset/filament" }
-                }
-              }
+              "schema": { "$ref": "#/components/schemas/SliceMultipartRequest" }
             }
           }
         },
-        "responses": { "200": { "description": "Arquivo gerado" }, "400": { "$ref": "#/components/responses/BadRequest" }, "409": { "$ref": "#/components/responses/Conflict" }, "500": { "$ref": "#/components/responses/InternalError" } }
+        "responses": {
+          "200": { "$ref": "#/components/responses/GCodeSliceResult" },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "408": { "$ref": "#/components/responses/RequestTimeout" },
+          "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/UnprocessableSlice" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
       }
     },
     "/slice/preview": {
       "post": {
         "tags": ["Slicing"],
-        "summary": "Gera preview JSON com thumbnail e detecção de suporte",
-        "description": "Executa slicing preservando enableSupport (ausente mantém preset), forçando generateImage=true e exportType=gcode, detecta suporte no G-code e retorna JSON com usesSupport, metadata e thumbnail base64 PNG. Não retorna o G-code binário.",
+        "summary": "Fatia um STL e retorna toolpaths limitados, metadados e thumbnail",
+        "description": "Usa o mesmo contrato estrito de quantidade e mesa do slicing síncrono. A prévia é extraída do G-code real, incluindo movimentos de suporte e brim; o thumbnail é uma renderização separada do STL. Não retorna o G-code. Fontes acima dos limites, comandos não suportados ou trabalho de arcos excessivo falham sem prévia parcial.",
         "requestBody": {
           "required": true,
           "content": {
@@ -199,7 +182,9 @@ const OpenAPI = `{
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PreviewResponse" } } }
           },
           "400": { "$ref": "#/components/responses/BadRequest" },
+          "408": { "$ref": "#/components/responses/RequestTimeout" },
           "409": { "$ref": "#/components/responses/Conflict" },
+          "422": { "$ref": "#/components/responses/UnprocessableSlice" },
           "500": { "$ref": "#/components/responses/InternalError" }
         }
       }
@@ -220,26 +205,22 @@ const OpenAPI = `{
     },
     "/slice/async": {
       "post": {
-        "tags": ["Slice"],
-        "summary": "Inicia slicing assíncrono com suporte a múltiplos arquivos",
+        "tags": ["Slicing"],
+        "summary": "Cria um job para fatiar exatamente um STL na mesa 1",
+        "description": "Aceita o mesmo multipart de /slice, cria o job, inicia uma goroutine e responde 202 sem aguardar a conclusão do fatiamento; o fatiamento pode começar antes da resposta. Overflow, falta de evidências ou indisponibilidade do lock aparecem depois como job failed. O download de um job completed contém somente plate_1.gcode; 202 não reserva capacidade nem garante sucesso.",
         "requestBody": {
           "required": true,
           "content": {
             "multipart/form-data": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "file": { "type": "string", "format": "binary" },
-                  "files": { "type": "array", "items": { "type": "string", "format": "binary" } },
-                  "printer": { "type": "string" },
-                  "preset": { "type": "string" },
-                  "filament": { "type": "string" }
-                }
-              }
+              "schema": { "$ref": "#/components/schemas/SliceMultipartRequest" }
             }
           }
         },
-        "responses": { "202": { "description": "Job criado", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Job" } } } } }
+        "responses": {
+          "202": { "description": "Job criado; consulte /jobs/{id} até completed ou failed", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Job" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
       }
     },
     "/profiles/builtins/{category}": {
@@ -248,6 +229,16 @@ const OpenAPI = `{
         "summary": "Lista profiles built-in do OrcaSlicer",
         "parameters": [{ "$ref": "#/components/parameters/Category" }],
         "responses": { "200": { "description": "Builtins", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/BuiltinProfile" } } } } } }
+      }
+    },
+    "/jobs": {
+      "get": {
+        "tags": ["Jobs"],
+        "summary": "Lista metadados dos jobs conhecidos",
+        "description": "Sem paginação ou ordenação garantida; não inclui caminhos internos de resultados.",
+        "responses": {
+          "200": { "description": "Jobs conhecidos", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Job" } } } } }
+        }
       }
     },
     "/jobs/{id}": {
@@ -259,17 +250,24 @@ const OpenAPI = `{
       },
       "delete": {
         "tags": ["Jobs"],
-        "summary": "Cancela job em execução",
+        "summary": "Tenta cancelar um job conhecido",
+        "description": "204 confirma apenas que a tentativa foi aceita para um job conhecido. Jobs já terminados e jobs ativos sem função de cancelamento registrada também podem retornar 204 sem alteração; não há estado cancelled nem garantia de interrupção imediata.",
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "204": { "description": "Cancelled" }, "404": { "$ref": "#/components/responses/NotFound" } }
+        "responses": { "204": { "description": "Tentativa aceita; não comprova cancelamento" }, "404": { "$ref": "#/components/responses/NotFound" } }
       }
     },
     "/jobs/{id}/download": {
       "get": {
         "tags": ["Jobs"],
-        "summary": "Download do resultado quando status=completed",
+        "summary": "Baixa o único G-code validado de um job completed",
+        "description": "Retorna application/x-gcode e plate_1.gcode. Um job failed por overflow ou pendente retorna 400, nunca um resultado parcial. Não inclui os headers de metadados do endpoint síncrono.",
         "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
-        "responses": { "200": { "description": "Arquivo" }, "400": { "description": "Não pronto" }, "404": { "$ref": "#/components/responses/NotFound" } }
+        "responses": {
+          "200": { "description": "G-code completo da mesa 1", "content": { "application/x-gcode": { "schema": { "type": "string", "format": "binary" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "500": { "$ref": "#/components/responses/InternalError" }
+        }
       }
     },
     "/slice/resolve-profiles": {
@@ -290,21 +288,41 @@ const OpenAPI = `{
   },
   "components": {
     "responses": {
+      "GCodeSliceResult": {
+        "description": "G-code completo de plate_1.gcode, com todas as instâncias solicitadas",
+        "headers": {
+          "Content-Disposition": { "schema": { "type": "string" }, "example": "attachment; filename=plate_1.gcode" },
+          "X-Print-Time-Seconds": { "description": "Estimativa em segundos; zero pode indicar metadado ausente", "schema": { "type": "number" } },
+          "X-Filament-Used-g": { "description": "Massa estimada em gramas", "schema": { "type": "number" } },
+          "X-Filament-Used-mm": { "description": "Comprimento estimado em milímetros", "schema": { "type": "number" } },
+          "X-Slice-Quantity": { "description": "Quantidade validada nas estatísticas do OrcaSlicer", "schema": { "type": "integer", "minimum": 1, "maximum": 512 } },
+          "X-Slice-Plate": { "description": "Sempre 1", "schema": { "type": "integer", "enum": [1] } }
+        },
+        "content": { "application/x-gcode": { "schema": { "type": "string", "format": "binary" } } }
+      },
       "BadRequest": {
-        "description": "Requisição inválida",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": "Invalid multipart form" } } }
+        "description": "Requisição inválida, incluindo múltiplos STLs, formato não STL ou combinação de parâmetros não suportada",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "message": "quantity must be an integer between 1 and 512" } } }
       },
       "NotFound": {
         "description": "Recurso não encontrado",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": "Profile not found" } } }
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "message": "Profile not found" } } }
+      },
+      "RequestTimeout": {
+        "description": "Slicing cancelado ou prazo do CLI excedido",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "message": "Slicing cancelled or timed out" } } }
       },
       "Conflict": {
-        "description": "Conflito ou slicer ocupado",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": "Slicer is busy" } } }
+        "description": "Conflito ou slicer ocupado; não há fila de espera",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "message": "Slicer is busy" } } }
+      },
+      "UnprocessableSlice": {
+        "description": "Depois de o CLI concluir com sucesso, a validação detectou contagem ou mesas divergentes. Nenhum G-code parcial é retornado; reduza quantity e tente novamente. Falha do próprio CLI é 500; no async, ambos aparecem como job failed após o 202.",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "message": "requested quantity 12, but OrcaSlicer produced 4 object(s) on plate 1; reduce quantity and retry" } } }
       },
       "InternalError": {
-        "description": "Erro interno",
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "error": "Slicing failed" } } }
+        "description": "Falha do CLI, filesystem, thumbnail, parser ou evidência de saída ausente/inválida",
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "message": "Slicing failed" } } }
       }
     },
     "parameters": {
@@ -324,8 +342,9 @@ const OpenAPI = `{
     "schemas": {
       "ErrorResponse": {
         "type": "object",
+        "required": ["message"],
         "properties": {
-          "error": { "type": "string" }
+          "message": { "type": "string" }
         }
       },
       "HealthResponse": {
@@ -341,7 +360,7 @@ const OpenAPI = `{
           "orcaSlicerExecutable": true,
           "orcaProfilesPath": "/app/squashfs-root/resources/profiles",
           "orcaProfilesPathExists": true,
-          "orcaVersion": "2.4.1",
+          "orcaVersion": "2.5.0",
           "generateImage": true,
           "resolveProfiles": true,
           "sanitizeProfiles": true
@@ -378,7 +397,7 @@ const OpenAPI = `{
           "startedAt": "2026-07-01T00:00:00Z",
           "finishedAt": "2026-07-01T00:02:00Z",
           "errorMessage": "",
-          "files": ["/tmp/slice/output/result.gcode"],
+          "files": ["/tmp/slice/output/plate_1.gcode"],
           "metadata": { "printTime": 12000, "filamentUsedG": 18.5, "filamentUsedMm": 6200 }
         },
         "properties": {
@@ -405,8 +424,9 @@ const OpenAPI = `{
           "preset": { "type": "object" },
           "filament": { "type": "object" },
           "filaments": { "type": "array", "items": { "type": "object" } },
-          "output": { "type": "string" },
-          "resultJSON": { "type": "object" },
+          "output": { "type": "string", "description": "stdout/stderr combinado, retido até 1 MiB com marcador de truncamento" },
+          "resultJson": { "type": "object" },
+          "files": { "type": "array", "items": { "type": "string" } },
           "slicerError": { "type": "string" },
           "errorMessage": { "type": "string" }
         }
@@ -459,40 +479,132 @@ const OpenAPI = `{
       },
       "SliceMultipartRequest": {
         "type": "object",
-        "required": ["file"],
+        "description": "Exatamente um STL no campo file ou no alias files. Não são aceitos múltiplos modelos, STEP ou 3MF. Cada arquivo é limitado a 100000000 bytes, sem limite agregado da requisição.",
+        "oneOf": [
+          { "required": ["file"], "not": { "required": ["files"] } },
+          { "required": ["files"], "not": { "required": ["file"] } }
+        ],
         "properties": {
-          "file": { "type": "string", "format": "binary" },
-          "printer": { "type": "string" },
-          "preset": { "type": "string" },
-          "filament": { "type": "string" },
-          "printerProfile": { "type": "string", "format": "binary" },
-          "presetProfile": { "type": "string", "format": "binary" },
-          "filamentProfile": { "type": "array", "items": { "type": "string", "format": "binary" } },
-          "resolveProfiles": { "type": "boolean" },
-          "sanitizeProfiles": { "type": "boolean" },
-          "generateImage": { "type": "boolean" },
-          "enableSupport": { "type": "boolean" },
-          "brimType": { "type": "boolean" },
-          "printSequenceByObject": { "type": "boolean" },
-          "overrides": { "type": "string" }
+          "file": { "type": "string", "format": "binary", "description": "Único modelo STL; extensão sem distinção de caixa" },
+          "files": { "type": "array", "minItems": 1, "maxItems": 1, "items": { "type": "string", "format": "binary" }, "description": "Alias legado para um único STL; não pode ser combinado com file" },
+          "printer": { "type": "string", "description": "Nome salvo/vendor; ignorado quando printerProfile é enviado" },
+          "preset": { "type": "string", "description": "Nome salvo/vendor; ignorado quando presetProfile é enviado" },
+          "filament": { "type": "string", "description": "Nome salvo/vendor; ignorado quando filamentProfile é enviado" },
+          "printerProfile": { "type": "string", "format": "binary", "description": "JSON direto completo/plano; tem precedência sobre printer" },
+          "presetProfile": { "type": "string", "format": "binary", "description": "JSON direto completo/plano; tem precedência sobre preset" },
+          "filamentProfile": { "type": "array", "items": { "type": "string", "format": "binary" }, "description": "Um ou mais JSON diretos; tem precedência sobre filament" },
+          "quantity": { "type": "integer", "minimum": 1, "maximum": 512, "default": 1, "description": "Inclui o original; valores acima de 1 exigem arrange=true. Nunca é reduzido automaticamente" },
+          "plate": { "type": "string", "enum": ["1"], "default": "1", "description": "Somente a mesa 1 é suportada" },
+          "arrange": { "type": "boolean", "default": false, "description": "Obrigatório para quantity>1; o OrcaSlicer decide posição e espaçamento" },
+          "arrangeSpacing": { "type": "number", "minimum": 0, "maximum": 0, "default": 0, "description": "0 usa espaçamento automático. Valores positivos retornam 400 porque o CLI 2.5.0 não oferece o caminho customizado suportado" },
+          "orient": { "type": "boolean", "default": false, "description": "Orientação automática do OrcaSlicer; a presença de rotate, rotateX ou rotateY, mesmo com valor 0, é incompatível com orient=true" },
+          "rotate": { "type": "number", "description": "Rotação explícita finita em graus ao redor de Z. Sua presença, inclusive com valor 0, exige orient=false e aciona --ensure-on-bed" },
+          "rotateX": { "type": "number", "description": "Rotação explícita finita em graus ao redor de X. Sua presença, inclusive com valor 0, exige orient=false e aciona --ensure-on-bed" },
+          "rotateY": { "type": "number", "description": "Rotação explícita finita em graus ao redor de Y. Sua presença, inclusive com valor 0, exige orient=false e aciona --ensure-on-bed" },
+          "bedType": { "type": "string" },
+          "exportType": { "type": "string", "enum": ["gcode"], "default": "gcode", "description": "3MF e ZIP não são suportados" },
+          "multicolorOnePlate": { "type": "boolean", "default": false },
+          "resolveProfiles": { "type": "boolean", "description": "Flag legada: perfis nomeados sempre têm inherits resolvido pela API; uploads diretos não" },
+          "sanitizeProfiles": { "type": "boolean", "description": "Ajusta somente cópias temporárias: from=system e remoção de small_perimeter_speed em presets" },
+          "generateImage": { "type": "boolean", "description": "Injeta thumbnail PNG 160x160 do STL no G-code sync/async. O preview gera thumbnail separado e força esta opção a false internamente" },
+          "enableSupport": { "type": "boolean", "description": "Ausente preserva o preset; presente escreve enable_support como string 1/0 no preset temporário (necessário no OrcaSlicer 2.5.0)" },
+          "brimType": { "type": "boolean", "description": "Ausente preserva o preset; true=auto_brim e false=no_brim" },
+          "printSequenceByObject": { "type": "boolean", "default": false, "description": "true=by object; ausente/false=by layer no preset temporário" },
+          "overrides": { "type": "string", "description": "String JSON com objetos printer, preset e/ou filament" }
         }
       },
       "PreviewResponse": {
         "type": "object",
-        "example": {
-          "usesSupport": true,
-          "printTime": 12450.3,
-          "filamentUsedG": 18.7,
-          "filamentUsedMm": 12450.3,
-          "thumbnail": "iVBORw0KGgoAAAANSUhEUgAAAKAAAACgCAYAAACLz2ct..."
-        },
+        "required": ["usesSupport", "printTime", "filamentUsedG", "filamentUsedMm", "thumbnail", "quantity", "toolpaths"],
         "properties": {
-          "usesSupport": { "type": "boolean" },
-          "printTime": { "type": "number" },
-          "filamentUsedG": { "type": "number" },
-          "filamentUsedMm": { "type": "number" },
-          "thumbnail": { "type": "string", "description": "PNG 160x160 em base64" }
+          "usesSupport": { "type": "boolean", "description": "true quando toolpaths.supportSegments>0 no G-code completo analisado; não é garantia de imprimibilidade" },
+          "printTime": { "type": "number", "description": "Estimativa em segundos" },
+          "filamentUsedG": { "type": "number", "description": "Estimativa em gramas" },
+          "filamentUsedMm": { "type": "number", "description": "Estimativa em milímetros" },
+          "thumbnail": { "type": "string", "description": "PNG 160x160 em base64, sem prefixo data URI; renderização do STL original, não do toolpath ou da disposição final" },
+          "quantity": { "type": "integer", "minimum": 1, "maximum": 512 },
+          "toolpaths": { "$ref": "#/components/schemas/ToolpathPreview" }
         }
+      },
+      "ToolpathPreview": {
+        "type": "object",
+        "description": "Movimentos XY com extrusão positiva do G-code real. A leitura é completa somente quando sourceComplete=true; layers/segments são um prefixo retido e limitado, enquanto totais, contadores e bounds consideram toda a fonte analisada.",
+        "required": ["version", "positionUnit", "extrusionUnit", "feedrateUnit", "coordinateSystem", "sourceComplete", "truncated", "sourceBytes", "sourceLines", "totalLayers", "totalSegments", "returnedLayers", "returnedSegments", "omittedSegments", "supportSegments", "brimSegments", "layerSemantics", "warnings", "limits", "layers"],
+        "properties": {
+          "version": { "type": "integer", "enum": [1] },
+          "positionUnit": { "type": "string", "enum": ["mm"] },
+          "extrusionUnit": { "type": "string", "enum": ["mm"] },
+          "feedrateUnit": { "type": "string", "enum": ["mm/s"] },
+          "coordinateSystem": { "type": "string", "enum": ["gcode"] },
+          "sourceComplete": { "type": "boolean", "description": "true somente após leitura completa dentro dos limites de bytes, linhas e comandos suportados" },
+          "truncated": { "type": "boolean", "description": "true quando camadas ou segmentos foram omitidos da representação retida; não significa leitura parcial da fonte" },
+          "sourceBytes": { "type": "integer", "format": "int64", "minimum": 0 },
+          "sourceLines": { "type": "integer", "minimum": 0 },
+          "totalLayers": { "type": "integer", "minimum": 0 },
+          "totalSegments": { "type": "integer", "minimum": 0, "description": "Total na fonte analisada após tesselação dos arcos" },
+          "returnedLayers": { "type": "integer", "minimum": 0, "maximum": 512 },
+          "returnedSegments": { "type": "integer", "minimum": 0, "maximum": 20000 },
+          "omittedSegments": { "type": "integer", "minimum": 0 },
+          "supportSegments": { "type": "integer", "minimum": 0, "description": "Total de extrusões Support, Support interface ou Support transition, incluindo segmentos omitidos" },
+          "brimSegments": { "type": "integer", "minimum": 0, "description": "Total de extrusões Brim, incluindo segmentos omitidos" },
+          "layerSemantics": { "type": "string", "enum": ["markers", "z_fallback"] },
+          "warnings": { "type": "array", "items": { "type": "string" }, "description": "Inclui limitações como macros de impressora não expandidas e homing assumido em zero" },
+          "limits": { "$ref": "#/components/schemas/ToolpathLimits" },
+          "bounds": { "$ref": "#/components/schemas/ToolpathBounds" },
+          "layers": { "type": "array", "maxItems": 512, "items": { "$ref": "#/components/schemas/ToolpathLayer" } }
+        }
+      },
+      "ToolpathLimits": {
+        "type": "object",
+        "required": ["sourceBytes", "lineBytes", "lines", "layers", "segments", "arcSegmentsPerMove", "arcSegmentsTotal", "arcChordToleranceMm"],
+        "properties": {
+          "sourceBytes": { "type": "integer", "enum": [33554432] },
+          "lineBytes": { "type": "integer", "enum": [1048576] },
+          "lines": { "type": "integer", "enum": [4000000] },
+          "layers": { "type": "integer", "enum": [512], "description": "Máximo retido; camadas adicionais são contadas, mas não retornadas" },
+          "segments": { "type": "integer", "enum": [20000], "description": "Máximo retido globalmente" },
+          "arcSegmentsPerMove": { "type": "integer", "enum": [4096] },
+          "arcSegmentsTotal": { "type": "integer", "enum": [1000000], "description": "Orçamento global de tesselação; excedê-lo falha sem prévia parcial" },
+          "arcChordToleranceMm": { "type": "number", "enum": [0.05] }
+        }
+      },
+      "ToolpathBounds": {
+        "type": "object",
+        "required": ["min", "max"],
+        "description": "Bounds dos pontos de extrusão XY analisados na fonte completa, inclusive geometria omitida da lista retida. Arcos são representados por sua tesselação.",
+        "properties": {
+          "min": { "$ref": "#/components/schemas/ToolpathVector" },
+          "max": { "$ref": "#/components/schemas/ToolpathVector" }
+        }
+      },
+      "ToolpathLayer": {
+        "type": "object",
+        "required": ["index", "z", "segments"],
+        "properties": {
+          "index": { "type": "integer", "minimum": 0 },
+          "z": { "type": "number" },
+          "segments": { "type": "array", "items": { "$ref": "#/components/schemas/ToolpathSegment" } }
+        }
+      },
+      "ToolpathSegment": {
+        "type": "object",
+        "required": ["from", "to", "extrusion", "tool"],
+        "properties": {
+          "from": { "$ref": "#/components/schemas/ToolpathVector" },
+          "to": { "$ref": "#/components/schemas/ToolpathVector" },
+          "extrusion": { "type": "number", "description": "Delta positivo de filamento em mm atribuído ao movimento" },
+          "feedrateMmSec": { "type": "number", "description": "Último feedrate comandado, convertido para mm/s" },
+          "feature": { "type": "string", "description": "Marcador TYPE/FEATURE vigente; Wipe durante WIPE_START/WIPE_END" },
+          "object": { "type": "string", "description": "Nome lido dos comentários printing object do OrcaSlicer" },
+          "tool": { "type": "integer", "minimum": 0, "maximum": 254 }
+        }
+      },
+      "ToolpathVector": {
+        "type": "array",
+        "minItems": 3,
+        "maxItems": 3,
+        "items": { "type": "number" },
+        "description": "Coordenadas [X,Y,Z] em mm no sistema do G-code"
       },
       "Job": {
         "type": "object",

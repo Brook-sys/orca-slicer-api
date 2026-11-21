@@ -4,7 +4,7 @@ Guia para uma instância de teste isolada. A imagem é somente **linux/amd64** e
 
 ## 1. Preparar e iniciar
 
-Tenha Docker/Compose e um diretório de dados gravável. Use o Compose do [README](../README.md) ou o build/run de [execução](api/running.md). A correção 2.5.0 está em validação: não presuma que uma imagem publicada ou um health 200 comprove o fluxo completo.
+Tenha Docker/Compose e um diretório de dados gravável. Use o Compose do [README](../README.md) ou o build/run de [execução](api/running.md). Houve validação HTTP local do código 2.5.0, mas uma imagem publicada ou um health 200 não comprova que a revisão validada está em execução.
 
 Para 2.5.0, confirme `ORCA_PROFILES_PATH=/app/profiles-json/resources/profiles`. Esse é o nível exato dos JSON vendor, não o diretório pai. Confira os demais defaults em [configuração](api/configuration.md).
 
@@ -40,4 +40,4 @@ A chave do cache inclui settings, perfis efetivos e executável; hit não compro
 
 ## 6. Integrar e validar
 
-Depois do sync, teste [preview](api/preview.md) e [jobs async](api/slicing.md), observando limites de concorrência e persistência. Complete o checklist de [operação](api/operations.md) antes de considerar a imagem validada. O estado/evidência atual está em [visão geral](api/overview.md); não há deploy concluído atestado.
+Depois do sync, teste [preview](api/preview.md) e [jobs async](api/slicing.md), observando limites de concorrência e persistência. Complete o checklist de [operação](api/operations.md) antes de considerar a imagem validada. O estado/evidência local está em [visão geral](api/overview.md); este guia não atesta publicação ou deploy.

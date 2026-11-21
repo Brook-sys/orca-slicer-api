@@ -13,10 +13,12 @@ import (
 )
 
 type CacheEntry struct {
-	Key       string
-	Files     []string
-	Workdir   string
-	CreatedAt time.Time
+	Key        string
+	Files      []string
+	Workdir    string
+	CreatedAt  time.Time
+	Quantity   int
+	Statistics SliceStatistics
 }
 
 // ResultCache owns private snapshots only. Get returns a new caller-owned copy;
@@ -66,17 +68,44 @@ func (c *ResultCache) Get(key string) (CacheEntry, bool) {
 	if !ok || time.Since(entry.CreatedAt) > c.ttl {
 		return CacheEntry{}, false
 	}
-	files, dir, err := copyResultFiles("", entry.Files)
+	resultFileCount := len(entry.Files)
+	snapshotFiles := append([]string(nil), entry.Files...)
+	if entry.Quantity > 0 {
+		// Validated results include the evidence needed to repeat the complete
+		// plate/quantity checks on every cache hit.
+		snapshotFiles = append(snapshotFiles,
+			filepath.Join(entry.Workdir, "result.json"),
+			filepath.Join(entry.Workdir, "plate_1.statistics.json"),
+		)
+	}
+	files, dir, err := copyResultFiles("", snapshotFiles)
 	if err != nil {
 		return CacheEntry{}, false
 	}
-	entry.Files, entry.Workdir = files, dir
+	entry.Files, entry.Workdir = files[:resultFileCount], dir
+	entry.Statistics.Objects = append([]SliceStatisticsObject(nil), entry.Statistics.Objects...)
 	return entry, true
 }
 
 func (c *ResultCache) Put(key string, files []string, workdir string) {
-	_ = workdir // The source directory remains caller-owned even if copying fails.
-	if key == "" || c.max <= 0 || len(files) == 0 {
+	c.put(key, files, len(files), 0, SliceStatistics{})
+}
+
+func (c *ResultCache) PutResult(key string, result Result) {
+	if len(result.Files) == 0 {
+		return
+	}
+	outputDir := filepath.Dir(result.Files[0])
+	snapshotFiles := append([]string(nil), result.Files...)
+	snapshotFiles = append(snapshotFiles,
+		filepath.Join(outputDir, "result.json"),
+		filepath.Join(outputDir, "plate_1.statistics.json"),
+	)
+	c.put(key, snapshotFiles, len(result.Files), result.Quantity, result.Statistics)
+}
+
+func (c *ResultCache) put(key string, files []string, resultFileCount int, quantity int, statistics SliceStatistics) {
+	if key == "" || c.max <= 0 || resultFileCount <= 0 || resultFileCount > len(files) {
 		return
 	}
 	c.mu.Lock()
@@ -94,7 +123,8 @@ func (c *ResultCache) Put(key string, files []string, workdir string) {
 		_ = os.RemoveAll(c.entries[oldest].Workdir)
 		delete(c.entries, oldest)
 	}
-	c.entries[key] = CacheEntry{Key: key, Files: storedFiles, Workdir: dir, CreatedAt: time.Now()}
+	statistics.Objects = append([]SliceStatisticsObject(nil), statistics.Objects...)
+	c.entries[key] = CacheEntry{Key: key, Files: storedFiles[:resultFileCount], Workdir: dir, CreatedAt: time.Now(), Quantity: quantity, Statistics: statistics}
 }
 
 func (c *ResultCache) oldestKey() string {

@@ -30,9 +30,15 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 mkdir -p "$out"
-cat > "$out/result.gcode" <<'EOF'
+cat > "$out/plate_1.gcode" <<'EOF'
 ; total estimated time: 1m
 G28
+EOF
+cat > "$out/result.json" <<'EOF'
+{"return_code":0,"plate_index":1,"sliced_plates":[{"id":1}]}
+EOF
+cat > "$out/plate_1.statistics.json" <<'EOF'
+{"version":1,"generator":"OrcaSlicer 2.5.0","objects":[{"name":"model.stl_1","instance":0}]}
 EOF
 `), 0o755); err != nil {
 		t.Fatal(err)
@@ -80,8 +86,16 @@ EOF
 	}
 
 	if jID == "" {
-		t.Fatalf("job did not complete")
+		t.Fatalf("job ID was not returned")
 	}
+	stored, ok := jobStore.Get(jID)
+	if !ok || stored.Status != jobs.StatusCompleted {
+		t.Fatalf("expected completed job, got %#v", stored)
+	}
+	if len(stored.ResultFiles) != 1 || filepath.Ext(stored.ResultFiles[0]) != ".gcode" {
+		t.Fatalf("expected one G-code result, got %#v", stored.ResultFiles)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(stored.Workdir) })
 
 	// 2. Poll job status
 	w2 := httptest.NewRecorder()
@@ -102,5 +116,8 @@ EOF
 
 	if w3.Code != 200 {
 		t.Fatalf("expected 200 from download, got %d", w3.Code)
+	}
+	if w3.Header().Get("Content-Type") != "application/x-gcode" || !bytes.Contains(w3.Body.Bytes(), []byte("G28")) {
+		t.Fatalf("expected direct G-code download, got headers=%#v body=%q", w3.Header(), w3.Body.String())
 	}
 }

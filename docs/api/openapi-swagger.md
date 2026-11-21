@@ -7,12 +7,12 @@
 curl --fail-with-body http://localhost:3000/openapi.json -o openapi.json
 ```
 
-A versão `info.version` da especificação não identifica necessariamente o OrcaSlicer. O esquema não é gerado dos handlers nem garante cobertura atualizada de todas as rotas.
+A versão `info.version` da especificação não identifica necessariamente o OrcaSlicer. O esquema não é gerado dos handlers nem garante cobertura de todas as respostas possíveis do `net/http`.
 
-## Divergências conhecidas
+## Contrato de slicing representado
 
-A especificação ainda contém exemplos/schema de erro com `error`, mas os handlers retornam **`message`**. Também descreve `resolveProfiles` como opt-in, enquanto o código atual sempre resolve perfis nomeados. O inventário completo e os contratos atuais estão em [rotas](endpoints.md), [parâmetros](slice-parameters.md) e [erros](errors.md).
+A especificação descreve um único STL, quantidade/mesa estritas, somente G-code, erros com **`message`**, resposta 422, headers sync e o esquema completo de toolpaths/limits do preview. Perfis nomeados são documentados como sempre resolvidos; `resolveProfiles` permanece uma flag legada.
 
-Esta revisão é somente documental: não modifica o Go que contém a especificação. Não gere um cliente assumindo fidelidade completa sem comparar esquema e handlers. Teste multipart e download por HTTP real; o Swagger não substitui integração com o CLI.
+A especificação continua manual: ao alterar handlers, revise-a junto com [rotas](endpoints.md), [parâmetros](slice-parameters.md), [preview](preview.md) e [erros](errors.md). Teste multipart e download por HTTP real; o Swagger não substitui integração com o CLI.
 
 A UI não adiciona autenticação: qualquer cliente com acesso à API pode executar operações reais. Não expor a interface como mecanismo de autorização.

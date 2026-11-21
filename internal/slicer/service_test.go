@@ -113,8 +113,8 @@ func TestBuildArgsInjectsTemporaryPresetControls(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if debug.Preset["enable_support"] != true {
-		t.Fatalf("expected enable_support true, got %#v", debug.Preset["enable_support"])
+	if debug.Preset["enable_support"] != "1" {
+		t.Fatalf("expected Orca-compatible enable_support string 1, got %#v", debug.Preset["enable_support"])
 	}
 	if debug.Preset["brim_type"] != "no_brim" {
 		t.Fatalf("expected brim_type no_brim, got %#v", debug.Preset["brim_type"])

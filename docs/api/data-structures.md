@@ -30,6 +30,6 @@ Campos HTTP: `id`, `status`, `progress` (0–100), `createdAt`, `updatedAt`, `er
 
 Settings de slicing são parseadas do multipart; perfis diretos são arquivos, não campos JSON embutidos no body. Nomes/flags/overrides estão em [parâmetros](slice-parameters.md). `/slice/resolve-profiles` usa JSON com nomes/overrides, não upload de perfis.
 
-`Result{Files,Workdir,Metadata}` é interno: `/slice` retorna arquivo/ZIP, não esse objeto. `PreviewResult` também é interno; o handler expõe `usesSupport`, `printTime`, `filamentUsedG`, `filamentUsedMm`, `thumbnail`.
+`Result{Files,Workdir,Metadata,Quantity,Statistics}` é interno: `/slice` retorna somente `plate_1.gcode`, não esse objeto nem ZIP. `PreviewResult` também é interno; o handler expõe `usesSupport`, `printTime`, `filamentUsedG`, `filamentUsedMm`, `thumbnail`, `quantity` e `toolpaths`. O contrato completo de toolpaths, limites e truncamento está em [preview](preview.md) e no OpenAPI.
 
 Estado e debug globais têm contratos distintos dos jobs: veja [status/debug](status-debug.md).

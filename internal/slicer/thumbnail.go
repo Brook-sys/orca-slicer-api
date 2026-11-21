@@ -1,6 +1,7 @@
 package slicer
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/base64"
 	"encoding/binary"
@@ -9,8 +10,10 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"io"
 	"math"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -35,23 +38,96 @@ type projectedTriangle struct {
 }
 
 func addNeptune4ThumbnailsToGCode(gcodePath string, modelData []byte) error {
-	data, err := os.ReadFile(gcodePath)
+	hasThumbnail, err := gcodeHasThumbnail(gcodePath)
 	if err != nil {
 		return err
 	}
-	if bytes.Contains(data, []byte("; thumbnail begin")) {
+	if hasThumbnail {
 		return nil
 	}
-	triangles, err := parseSTLTriangles(modelData)
+	img, err := renderNeptune4Thumbnail(modelData)
 	if err != nil {
-		return fmt.Errorf("thumbnail model parse: %w", err)
+		return err
 	}
-	img := renderThumbnail(triangles, 160, color.RGBA{R: 0, G: 0, B: 0, A: 0})
 	block, err := pngThumbnailBlock(img)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(gcodePath, append(block, data...), 0o644)
+
+	source, err := os.Open(gcodePath)
+	if err != nil {
+		return err
+	}
+	temporary, err := os.CreateTemp(filepath.Dir(gcodePath), ".thumbnail-*")
+	if err != nil {
+		_ = source.Close()
+		return err
+	}
+	temporaryPath := temporary.Name()
+	complete := false
+	defer func() {
+		_ = source.Close()
+		_ = temporary.Close()
+		if !complete {
+			_ = os.Remove(temporaryPath)
+		}
+	}()
+	if _, err := temporary.Write(block); err != nil {
+		return err
+	}
+	if _, err := io.Copy(temporary, source); err != nil {
+		return err
+	}
+	if err := temporary.Chmod(0o644); err != nil {
+		return err
+	}
+	if err := source.Close(); err != nil {
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(temporaryPath, gcodePath); err != nil {
+		return err
+	}
+	complete = true
+	return nil
+}
+
+func gcodeHasThumbnail(gcodePath string) (bool, error) {
+	file, err := os.Open(gcodePath)
+	if err != nil {
+		return false, err
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 64*1024), maxToolpathLineBytes)
+	for scanner.Scan() {
+		if bytes.Contains(scanner.Bytes(), []byte("; thumbnail begin")) {
+			return true, nil
+		}
+	}
+	return false, scanner.Err()
+}
+
+func renderNeptune4Thumbnail(modelData []byte) (*image.RGBA, error) {
+	triangles, err := parseSTLTriangles(modelData)
+	if err != nil {
+		return nil, fmt.Errorf("thumbnail model parse: %w", err)
+	}
+	return renderThumbnail(triangles, 160, color.RGBA{R: 0, G: 0, B: 0, A: 0}), nil
+}
+
+func neptune4ThumbnailBase64(modelData []byte) (string, error) {
+	img, err := renderNeptune4Thumbnail(modelData)
+	if err != nil {
+		return "", err
+	}
+	var pngData bytes.Buffer
+	if err := png.Encode(&pngData, img); err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(pngData.Bytes()), nil
 }
 
 func pngThumbnailBlock(img image.Image) ([]byte, error) {

@@ -2,7 +2,7 @@
 
 API HTTP em Go para perfis JSON e OrcaSlicer CLI. Base dos exemplos: `http://localhost:3000`. Não há autenticação. Use rede confiável ou proxy com controle de acesso.
 
-**Baseline:** atualização para OrcaSlicer 2.5.0 enviada para build, imagem somente `linux/amd64`. Cubo e STL de 5.952 triângulos foram fatiados com AppImage original e perfis achatados pela API; integração HTTP completa e imagem final ainda pendentes. Não houve equivalência com a referência 2.4.0 ou impressão física validada. Não representa deploy concluído. Veja [evidências](api/overview.md).
+**Baseline:** OrcaSlicer 2.5.0, imagem somente `linux/amd64`. Houve validação HTTP local com AppImage oficial e STLs sintéticos para sync/async, quantidade/mesa estritas, rotações, preview e erros. Imagem final, publicação e deploy exigem evidência própria; equivalência com 2.4.0 e impressão física não foram validados. Veja [evidências](api/overview.md).
 
 ## Começar
 

@@ -26,11 +26,17 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 mkdir -p "$out"
-cat > "$out/result.gcode" <<'EOF'
+cat > "$out/plate_1.gcode" <<'EOF'
 ; total estimated time: 1h 2m 3s
 ; filament used [mm] = 1234.5
 ; filament used [g] = 12.3
 G28
+EOF
+cat > "$out/result.json" <<'EOF'
+{"return_code":0,"plate_index":1,"sliced_plates":[{"id":1}]}
+EOF
+cat > "$out/plate_1.statistics.json" <<'EOF'
+{"version":1,"generator":"OrcaSlicer 2.5.0","objects":[{"name":"model.stl_1","instance":0}]}
 EOF
 `), 0o755); err != nil {
 		t.Fatal(err)
@@ -44,8 +50,11 @@ EOF
 	}
 	defer os.RemoveAll(result.Workdir)
 
-	if len(result.Files) != 1 {
-		t.Fatalf("expected 1 file, got %d", len(result.Files))
+	if len(result.Files) != 1 || filepath.Ext(result.Files[0]) != ".gcode" {
+		t.Fatalf("expected one G-code file, got %#v", result.Files)
+	}
+	if result.Quantity != 1 || len(result.Statistics.Objects) != 1 {
+		t.Fatalf("expected validated quantity evidence, got quantity=%d statistics=%#v", result.Quantity, result.Statistics)
 	}
 	if result.Metadata.PrintTimeSeconds != 3723 {
 		t.Fatalf("expected metadata print time, got %v", result.Metadata.PrintTimeSeconds)
@@ -72,12 +81,23 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 mkdir -p "$out"
-cat > "$out/result.gcode" <<'EOF'
+cat > "$out/plate_1.gcode" <<'EOF'
 ; total estimated time: 10m 1s
 ; filament used [mm] = 500
 ; filament used [g] = 5
-;TYPE:SUPPORT
-G1 X0 Y0
+G90
+M83
+;LAYER_CHANGE
+;Z:0.3
+;TYPE:Support
+G1 X0 Y0 Z0.3 F600
+G1 X1 Y0 E0.1
+EOF
+cat > "$out/result.json" <<'EOF'
+{"return_code":0,"plate_index":1,"sliced_plates":[{"id":1}]}
+EOF
+cat > "$out/plate_1.statistics.json" <<'EOF'
+{"version":1,"generator":"OrcaSlicer 2.5.0","objects":[{"name":"model.stl_1","instance":0}]}
 EOF
 `), 0o755); err != nil {
 		t.Fatal(err)
@@ -100,6 +120,12 @@ EOF
 	if result.FilamentUsedG != 5 || result.FilamentUsedMm != 500 {
 		t.Fatalf("expected filament metadata, got g=%v mm=%v", result.FilamentUsedG, result.FilamentUsedMm)
 	}
+	if result.Quantity != 1 || !result.Toolpaths.SourceComplete || result.Toolpaths.Truncated || result.Toolpaths.TotalSegments != 1 {
+		t.Fatalf("expected one complete toolpath segment, got %#v", result.Toolpaths)
+	}
+	if len(result.Toolpaths.Layers) != 1 || len(result.Toolpaths.Layers[0].Segments) != 1 || result.Toolpaths.Layers[0].Segments[0].Feature != "Support" {
+		t.Fatalf("expected actual support toolpath, got %#v", result.Toolpaths.Layers)
+	}
 }
 
 func TestServicePreviewWithFakeSlicerWithoutSupport(t *testing.T) {
@@ -119,10 +145,21 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 mkdir -p "$out"
-cat > "$out/result.gcode" <<'EOF'
+cat > "$out/plate_1.gcode" <<'EOF'
 ; total estimated time: 1m
-;TYPE:WALL-OUTER
-G1 X0 Y0
+G90
+M83
+;LAYER_CHANGE
+;Z:0.2
+;TYPE:Brim
+G1 X0 Y0 Z0.2 F600
+G1 X2 Y0 E0.2
+EOF
+cat > "$out/result.json" <<'EOF'
+{"return_code":0,"plate_index":1,"sliced_plates":[{"id":1}]}
+EOF
+cat > "$out/plate_1.statistics.json" <<'EOF'
+{"version":1,"generator":"OrcaSlicer 2.5.0","objects":[{"name":"model.stl_1","instance":0}]}
 EOF
 `), 0o755); err != nil {
 		t.Fatal(err)
@@ -138,6 +175,9 @@ EOF
 	}
 	if result.ThumbnailBase64 == "" {
 		t.Fatal("expected preview thumbnail")
+	}
+	if result.Toolpaths.TotalSegments != 1 || result.Toolpaths.Layers[0].Segments[0].Feature != "Brim" {
+		t.Fatalf("expected actual brim toolpath, got %#v", result.Toolpaths)
 	}
 }
 

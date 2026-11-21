@@ -18,9 +18,13 @@ Fallback por tokens é último recurso, gera warning e rejeita ambiguidades; nã
 
 Overrides e controles alteram cópias temporárias, não perfis persistidos. Perfis multipart têm precedência sobre nomes e não são resolvidos recursivamente. Printer e preset precisam estar presentes juntos para formar `--load-settings`.
 
+## Contrato estrito e rotação
+
+A API entrega somente um G-code da mesa 1 e valida manifesto/estatísticas contra a quantidade pedida. Não converte overflow em sucesso parcial. Rotações explícitas acrescentam `--ensure-on-bed` porque o CLI 2.5.0 centraliza o volume na origem após cada rotação; `orient=true` é incompatível com elas.
+
 ## Preview e thumbnail
 
-Preview executa slice real e força suporte/imagem. A API gera PNG de STL e injeta no G-code, sem depender de renderização gráfica do CLI. Isso não cobre geometria STEP/3MF nem mesa completa com múltiplos modelos.
+Preview executa slice real sem alterar a decisão de suporte. O PNG é gerado separadamente do STL original; o G-code não recebe injeção nesse fluxo e é lido pelo parser de toolpaths. Sync/async com `generateImage=true` injetam o PNG no G-code por cópia incremental. A miniatura não representa arranjo final, suportes ou toolpath.
 
 ## Defaults não mudados por um teste
 

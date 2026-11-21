@@ -37,4 +37,4 @@ Os caminhos acima são placeholders. Use JSON da mesma versão do executável. O
 
 `ci.yml` faz build de imagem somente amd64 e `push:false`. **`container.yml` é o único publicador**: usa `ORCA_VERSION=2.5.0`, build amd64, publica em push de main/tag e execução manual; em pull request não publica. Tags incluem branch/tag, `sha-...`, `latest` e variantes Orca conforme regras do workflow.
 
-Não conclua que uma tag publicada foi implantada. Escolha revisão/digest verificável, faça backup dos dados e valide em instância isolada antes de qualquer troca autorizada. Não há deploy concluído registrado nesta correção. Veja [operação](operations.md).
+Não conclua que uma tag publicada foi implantada. Escolha revisão/digest verificável, faça backup dos dados e valide em instância isolada antes de qualquer troca autorizada. Registre evidências operacionais fora do repositório público. Veja [operação](operations.md).

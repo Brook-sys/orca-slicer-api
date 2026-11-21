@@ -92,7 +92,7 @@ func TestPersistentStore(t *testing.T) {
 	// Test completed job recovery
 	job2, _ := store.Create()
 	store.UpdateStatus(job2.ID, StatusCompleted, nil)
-	
+
 	store3 := NewPersistentStore(dir)
 	fetched2, _ := store3.Get(job2.ID)
 	if fetched2.Status != StatusCompleted {
@@ -104,7 +104,7 @@ func TestStoreCleanup(t *testing.T) {
 	store := NewStore()
 	job, _ := store.Create()
 	store.UpdateStatus(job.ID, StatusCompleted, nil)
-	
+
 	// Fast forward time for test
 	store.mu.Lock()
 	store.jobs[job.ID].UpdatedAt = time.Now().Add(-2 * time.Hour)

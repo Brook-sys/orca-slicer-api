@@ -2,9 +2,11 @@ package slicer
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -24,9 +26,21 @@ func TestCacheKeyIncludesEverySettingsField(t *testing.T) {
 				field.SetString("changed")
 			case reflect.Bool:
 				field.SetBool(true)
+			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+				field.SetInt(1)
+			case reflect.Float32, reflect.Float64:
+				field.SetFloat(1)
 			case reflect.Pointer:
-				v := true
-				field.Set(reflect.ValueOf(&v))
+				value := reflect.New(field.Type().Elem())
+				switch value.Elem().Kind() {
+				case reflect.Bool:
+					value.Elem().SetBool(true)
+				case reflect.Float32, reflect.Float64:
+					value.Elem().SetFloat(1)
+				default:
+					t.Fatalf("uncovered pointer type %v", field.Type())
+				}
+				field.Set(value)
 			case reflect.Map:
 				if field.Type() == reflect.TypeOf(map[string]any{}) {
 					field.Set(reflect.ValueOf(map[string]any{"x": 1}))
@@ -129,7 +143,9 @@ while [ "$#" -gt 0 ]; do
  if [ "$1" = "--outputdir" ]; then shift; out="$1"; fi
  shift
 done
-printf '; total estimated time: 1m\nG28\n' > "$out/result.gcode"
+printf '; total estimated time: 1m\nG28\n' > "$out/plate_1.gcode"
+printf '{"return_code":0,"plate_index":1,"sliced_plates":[{"id":1}]}\n' > "$out/result.json"
+printf '{"version":1,"generator":"OrcaSlicer 2.5.0","objects":[{"name":"model.stl_1","instance":0}]}\n' > "$out/plate_1.statistics.json"
 `
 	if err := os.WriteFile(exe, []byte(script), 0700); err != nil {
 		t.Fatal(err)
@@ -139,15 +155,19 @@ printf '; total estimated time: 1m\nG28\n' > "$out/result.gcode"
 	for _, support := range []*bool{nil, boolPointer(false), boolPointer(true)} {
 		settings := Settings{PrinterProfile: map[string]any{"name": "test"}, PresetProfile: map[string]any{"enable_support": "profile"}, EnableSupport: support}
 		for i := 0; i < 2; i++ {
-			if _, err := s.Preview(context.Background(), "model.stl", testASCIISTL(), settings); err != nil {
+			preview, err := s.Preview(context.Background(), "model.stl", testASCIISTL(), settings)
+			if err != nil {
 				t.Fatal(err)
+			}
+			if preview.Quantity != 1 || !preview.Toolpaths.SourceComplete {
+				t.Fatalf("cache lost validated preview evidence: %#v", preview)
 			}
 			// The first execution records the actual preset passed to the CLI.
 			if i == 0 {
 				got := s.Debug().Preset["enable_support"]
 				want := any("profile")
 				if support != nil {
-					want = *support
+					want = boolArg(*support)
 				}
 				if got != want {
 					t.Fatalf("support changed: got %v want %v", got, want)
@@ -163,7 +183,95 @@ printf '; total estimated time: 1m\nG28\n' > "$out/result.gcode"
 		if _, err := os.Stat(result.Files[0]); err != nil {
 			t.Fatal(err)
 		}
+		if result.Quantity != 1 || len(result.Statistics.Objects) != 1 {
+			t.Fatalf("cache lost slice statistics: %#v", result)
+		}
 		os.RemoveAll(result.Workdir)
+	}
+}
+
+func TestCacheHitRevalidatesGCodeAndEvidence(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		damage func(t *testing.T, dir string)
+	}{
+		{name: "missing manifest", damage: func(t *testing.T, dir string) {
+			if err := os.Remove(filepath.Join(dir, "result.json")); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "missing statistics", damage: func(t *testing.T, dir string) {
+			if err := os.Remove(filepath.Join(dir, "plate_1.statistics.json")); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "wrong plate", damage: func(t *testing.T, dir string) {
+			if err := os.Rename(filepath.Join(dir, "plate_1.gcode"), filepath.Join(dir, "plate_2.gcode")); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "duplicate identities", damage: func(t *testing.T, dir string) {
+			statistics := `{"version":1,"generator":"OrcaSlicer 2.5.0","objects":[{"name":"model.stl_1","instance":0},{"name":"model.stl_1","instance":0}]}`
+			if err := os.WriteFile(filepath.Join(dir, "plate_1.statistics.json"), []byte(statistics), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "empty G-code", damage: func(t *testing.T, dir string) {
+			if err := os.WriteFile(filepath.Join(dir, "plate_1.gcode"), nil, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			dir := t.TempDir()
+			calls := filepath.Join(dir, "calls")
+			exe := filepath.Join(dir, "slicer")
+			script := fmt.Sprintf(`#!/bin/sh
+printf 'call\n' >> %q
+while [ "$#" -gt 0 ]; do
+ if [ "$1" = "--outputdir" ]; then shift; out="$1"; fi
+ shift
+done
+printf '; total estimated time: 1m\nG28\n' > "$out/plate_1.gcode"
+printf '{"return_code":0,"plate_index":1,"sliced_plates":[{"id":1}]}\n' > "$out/result.json"
+printf '{"version":1,"generator":"OrcaSlicer 2.5.0","objects":[{"name":"model.stl_1","instance":0}]}\n' > "$out/plate_1.statistics.json"
+`, calls)
+			if err := os.WriteFile(exe, []byte(script), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			cache := NewPersistentResultCache(time.Hour, 1, filepath.Join(dir, "cache"))
+			service := Service{OrcaSlicerPath: exe, ResultCache: cache, State: NewStateStore(dir)}
+			result, err := service.Slice(context.Background(), "model.stl", testASCIISTL(), Settings{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			os.RemoveAll(result.Workdir)
+
+			cache.mu.RLock()
+			if len(cache.entries) != 1 {
+				cache.mu.RUnlock()
+				t.Fatal("validated result was not cached")
+			}
+			var snapshot string
+			for _, entry := range cache.entries {
+				snapshot = entry.Workdir
+			}
+			cache.mu.RUnlock()
+			test.damage(t, snapshot)
+
+			result, err = service.Slice(context.Background(), "model.stl", testASCIISTL(), Settings{})
+			if err != nil {
+				t.Fatalf("invalid cache should fall back to a fresh slice: %v", err)
+			}
+			defer os.RemoveAll(result.Workdir)
+			data, err := os.ReadFile(calls)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.Count(string(data), "call\n"); got != 2 {
+				t.Fatalf("damaged cache was served instead of resliced; executions=%d", got)
+			}
+		})
 	}
 }
 

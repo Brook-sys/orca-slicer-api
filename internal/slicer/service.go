@@ -16,12 +16,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/Brook-sys/orca-slicer-api/internal/httpx"
 )
+
+const maxSlicerOutputBytes = 1 << 20
 
 type Service struct {
 	DataPath         string
@@ -55,15 +58,19 @@ func (s *Service) SliceModelsAsync(ctx context.Context, jobID string, models []M
 }
 
 func (s *Service) sliceInternal(ctx context.Context, jobID string, models []ModelInput, settings Settings) (Result, error) {
+	settings, err := normalizeSliceSettings(settings)
+	if err != nil {
+		return Result{}, err
+	}
+	if err := validateSingleSTL(models); err != nil {
+		return Result{}, err
+	}
 	if !s.mu.TryLock() {
 		return Result{}, httpx.NewError(http.StatusConflict, "Slicer is busy")
 	}
 	defer s.mu.Unlock()
 
 	startedAt := nowString()
-	if len(models) == 0 {
-		return Result{}, httpx.NewError(http.StatusBadRequest, "Model file is required")
-	}
 
 	if s.State != nil {
 		_ = s.State.Set(JobState{Status: StatusProcessing, StartedAt: startedAt})
@@ -80,6 +87,12 @@ func (s *Service) sliceInternal(ctx context.Context, jobID string, models []Mode
 		s.setFailed(startedAt, err.Error())
 		return Result{}, err
 	}
+	keepWorkdir := false
+	defer func() {
+		if !keepWorkdir {
+			_ = os.RemoveAll(workdir)
+		}
+	}()
 
 	inputDir := filepath.Join(workdir, "input")
 	outputDir := filepath.Join(workdir, "output")
@@ -92,16 +105,14 @@ func (s *Service) sliceInternal(ctx context.Context, jobID string, models []Mode
 		return Result{}, err
 	}
 
-	inputPaths := make([]string, 0, len(models))
-	for _, model := range models {
-		inputPath := filepath.Join(inputDir, filepath.Base(model.Filename))
-		if err := os.WriteFile(inputPath, model.Data, 0o644); err != nil {
-			s.setFailed(startedAt, err.Error())
-			return Result{}, err
-		}
-		inputPaths = append(inputPaths, inputPath)
+	// Use a private fixed name so an upload can never collide with a temporary
+	// profile or with another input. The original filename remains in the cache key.
+	inputPath := filepath.Join(inputDir, "model.stl")
+	if err := os.WriteFile(inputPath, models[0].Data, 0o644); err != nil {
+		s.setFailed(startedAt, err.Error())
+		return Result{}, err
 	}
-	inputPath := inputPaths[0]
+	inputPaths := []string{inputPath}
 
 	debug := SliceDebug{StartedAt: startedAt, Workdir: workdir, InputPath: inputPath, OutputDir: outputDir, Command: s.OrcaSlicerPath, Settings: settings}
 	args, err := s.buildArgsForInputs(inputPaths, inputDir, outputDir, settings, &debug)
@@ -120,10 +131,15 @@ func (s *Service) sliceInternal(ctx context.Context, jobID string, models []Mode
 		cacheKey = s.resultCacheKey(models, settings, debug)
 		if cacheKey != "" {
 			if entry, ok := s.ResultCache.Get(cacheKey); ok {
-				_ = os.RemoveAll(workdir)
-				metadata := AggregateMetadata(entry.Files)
-				s.setState(JobState{Status: StatusCompleted, StartedAt: startedAt, FinishedAt: nowString(), Files: entry.Files, Metadata: metadata})
-				return Result{Files: entry.Files, Workdir: entry.Workdir, Metadata: metadata}, nil
+				files, statistics, validationErr := validateSliceOutput(entry.Workdir, settings.Quantity)
+				if entry.Quantity == settings.Quantity && validationErr == nil {
+					metadata := AggregateMetadata(files)
+					s.setState(JobState{Status: StatusCompleted, StartedAt: startedAt, FinishedAt: nowString(), Files: files, Metadata: metadata})
+					return Result{Files: files, Workdir: entry.Workdir, Metadata: metadata, Quantity: settings.Quantity, Statistics: statistics}, nil
+				}
+				// Cached bytes and evidence must pass the same validation as a fresh
+				// slice. A damaged snapshot is a miss, never a partial success.
+				_ = os.RemoveAll(entry.Workdir)
 			}
 		}
 	}
@@ -160,6 +176,10 @@ func (s *Service) sliceInternal(ctx context.Context, jobID string, models []Mode
 		"sanitize_profiles", settings.SanitizeProfiles,
 		"arrange", settings.Arrange,
 		"orient", settings.Orient,
+		"quantity", settings.Quantity,
+		"rotate_x", settings.RotateX,
+		"rotate_y", settings.RotateY,
+		"rotate_z", settings.Rotate,
 	)
 	started := time.Now()
 
@@ -175,13 +195,23 @@ func (s *Service) sliceInternal(ctx context.Context, jobID string, models []Mode
 	var outputBuilder strings.Builder
 	var outputMu sync.Mutex
 	var outputWG sync.WaitGroup
+	outputTruncated := false
 	readOutput := func(pipe io.Reader, trackProgress bool) {
 		defer outputWG.Done()
 		scanner := bufio.NewScanner(pipe)
 		for scanner.Scan() {
-			line := scanner.Text()
+			line := scanner.Text() + "\n"
 			outputMu.Lock()
-			outputBuilder.WriteString(line + "\n")
+			remaining := maxSlicerOutputBytes - outputBuilder.Len()
+			if remaining > 0 {
+				if len(line) > remaining {
+					line = line[:remaining]
+					outputTruncated = true
+				}
+				outputBuilder.WriteString(line)
+			} else {
+				outputTruncated = true
+			}
 			outputMu.Unlock()
 			if trackProgress && jobID != "" && s.JobStore != nil {
 				if progress, ok := jobs.ExtractProgress(line); ok {
@@ -198,6 +228,9 @@ func (s *Service) sliceInternal(ctx context.Context, jobID string, models []Mode
 	err = cmd.Wait()
 	outputWG.Wait()
 	debug.Output = strings.TrimSpace(outputBuilder.String())
+	if outputTruncated {
+		debug.Output += "\n[slicer output truncated at 1 MiB]"
+	}
 
 	if err != nil {
 		if cmdCtx.Err() != nil {
@@ -217,20 +250,14 @@ func (s *Service) sliceInternal(ctx context.Context, jobID string, models []Mode
 		return Result{}, httpx.NewError(http.StatusInternalServerError, "Slicing failed: "+message)
 	}
 
-	files, err := resultFiles(outputDir, settings.ExportType)
+	files, statistics, err := validateSliceOutput(outputDir, settings.Quantity)
 	if err != nil {
 		debug.ErrorMessage = err.Error()
 		s.setFailed(startedAt, err.Error())
 		return Result{}, err
 	}
-	if len(files) == 0 {
-		err := httpx.NewError(http.StatusInternalServerError, "No files generated during slicing")
-		debug.ErrorMessage = err.Error()
-		s.setFailed(startedAt, err.Error())
-		return Result{}, err
-	}
 
-	if settings.GenerateImage && settings.ExportType != "3mf" {
+	if settings.GenerateImage {
 		for _, file := range files {
 			if err := addNeptune4ThumbnailsToGCode(file, models[0].Data); err != nil {
 				debug.ErrorMessage = err.Error()
@@ -241,18 +268,21 @@ func (s *Service) sliceInternal(ctx context.Context, jobID string, models []Mode
 	}
 
 	metadata := AggregateMetadata(files)
-	result := Result{Files: files, Workdir: workdir, Metadata: metadata}
+	result := Result{Files: files, Workdir: workdir, Metadata: metadata, Quantity: settings.Quantity, Statistics: statistics}
 	if s.ResultCache != nil && cacheKey != "" {
-		s.ResultCache.Put(cacheKey, files, workdir)
+		s.ResultCache.PutResult(cacheKey, result)
 	}
 	s.setState(JobState{Status: StatusCompleted, StartedAt: startedAt, FinishedAt: nowString(), Files: files, Metadata: metadata})
-	slog.Info("slicing completed", "duration_ms", time.Since(started).Milliseconds(), "files", len(files), "print_time_seconds", metadata.PrintTimeSeconds)
+	slog.Info("slicing completed", "duration_ms", time.Since(started).Milliseconds(), "files", len(files), "quantity", settings.Quantity, "print_time_seconds", metadata.PrintTimeSeconds)
+	keepWorkdir = true
 	return result, nil
 }
 
 func (s *Service) Preview(ctx context.Context, filename string, data []byte, settings Settings) (PreviewResult, error) {
-	// Preview changes only the representation, never the support decision.
-	settings.GenerateImage = true
+	// Preview changes only the representation, never the support decision. The
+	// thumbnail is returned separately so the parser reads the original G-code
+	// without an in-memory thumbnail-injection copy.
+	settings.GenerateImage = false
 	settings.ExportType = "gcode"
 
 	result, err := s.Slice(ctx, filename, data, settings)
@@ -261,21 +291,28 @@ func (s *Service) Preview(ctx context.Context, filename string, data []byte, set
 	}
 	defer os.RemoveAll(result.Workdir)
 
-	if len(result.Files) == 0 {
-		return PreviewResult{}, httpx.NewError(http.StatusInternalServerError, "No files generated")
+	if len(result.Files) != 1 {
+		return PreviewResult{}, httpx.NewError(http.StatusInternalServerError, "Preview requires exactly one G-code file")
 	}
 
 	gcodePath := result.Files[0]
-	usesSupport, _ := detectSupportInGCode(gcodePath)
-
-	thumb := extractThumbnailFromGCode(gcodePath)
+	toolpaths, err := extractToolpathPreview(ctx, gcodePath)
+	if err != nil {
+		return PreviewResult{}, httpx.NewError(http.StatusInternalServerError, "Failed to build toolpath preview: "+err.Error())
+	}
+	thumb, err := neptune4ThumbnailBase64(data)
+	if err != nil {
+		return PreviewResult{}, httpx.NewError(http.StatusInternalServerError, "Image generation failed: "+err.Error())
+	}
 
 	return PreviewResult{
-		UsesSupport:      usesSupport,
+		UsesSupport:      toolpaths.SupportSegments > 0,
 		PrintTimeSeconds: result.Metadata.PrintTimeSeconds,
 		FilamentUsedG:    result.Metadata.FilamentUsedG,
 		FilamentUsedMm:   result.Metadata.FilamentUsedMM,
 		ThumbnailBase64:  thumb,
+		Toolpaths:        toolpaths,
+		Quantity:         result.Quantity,
 		Workdir:          result.Workdir,
 	}, nil
 }
@@ -285,17 +322,32 @@ func (s *Service) buildArgs(inputPath string, inputDir string, outputDir string,
 }
 
 func (s *Service) buildArgsForInputs(inputPaths []string, inputDir string, outputDir string, settings Settings, debug *SliceDebug) ([]string, error) {
+	settings, err := normalizeSliceSettings(settings)
+	if err != nil {
+		return nil, err
+	}
+	if len(inputPaths) != 1 || strings.ToLower(filepath.Ext(inputPaths[0])) != ".stl" {
+		return nil, httpx.NewError(http.StatusBadRequest, "Exactly one STL input is supported")
+	}
 	args := make([]string, 0)
-
-	if settings.ExportType == "3mf" {
-		args = append(args, "--export-3mf", "result.3mf")
+	args = append(args, "--slice", "1", "--clone-objects", strconv.Itoa(settings.Quantity), "--export-statistics")
+	// Orca applies transforms in command-line order. Keep the explicit X/Y/Z
+	// rotations before arrangement and before the mutually exclusive --orient.
+	if settings.RotateX != nil {
+		args = append(args, "--rotate-x", rotationArg(settings.RotateX))
 	}
-
-	plate := settings.Plate
-	if plate == "" {
-		plate = "1"
+	if settings.RotateY != nil {
+		args = append(args, "--rotate-y", rotationArg(settings.RotateY))
 	}
-	args = append(args, "--slice", plate)
+	if settings.Rotate != nil {
+		args = append(args, "--rotate", rotationArg(settings.Rotate))
+	}
+	if hasExplicitRotation(settings) {
+		// Orca 2.5.0 centers volumes around the origin after every rotation.
+		// Without this final transform, the lower half is left below Z=0 and
+		// silently omitted from the sliced object.
+		args = append(args, "--ensure-on-bed")
+	}
 	args = append(args, "--arrange", boolArg(settings.Arrange))
 	args = append(args, "--orient", boolArg(settings.Orient))
 
@@ -330,7 +382,7 @@ func (s *Service) buildArgsForInputs(inputPaths []string, inputDir string, outpu
 	if settings.PresetProfile != nil {
 		profile := prepareProfileForSlicing("presets", merge(copyMap(settings.PresetProfile), settings.Overrides["preset"]), settings.SanitizeProfiles)
 		if settings.EnableSupport != nil {
-			profile["enable_support"] = *settings.EnableSupport
+			profile["enable_support"] = boolArg(*settings.EnableSupport)
 		}
 		if settings.BrimType != nil {
 			if *settings.BrimType {
@@ -358,7 +410,7 @@ func (s *Service) buildArgsForInputs(inputPaths []string, inputDir string, outpu
 		}
 		profile = prepareProfileForSlicing("presets", profile, settings.SanitizeProfiles)
 		if settings.EnableSupport != nil {
-			profile["enable_support"] = *settings.EnableSupport
+			profile["enable_support"] = boolArg(*settings.EnableSupport)
 		}
 		if settings.BrimType != nil {
 			if *settings.BrimType {
@@ -460,19 +512,17 @@ func prepareProfileForSlicing(category string, profile map[string]any, sanitize 
 }
 
 func resultFiles(outputDir string, exportType string) ([]string, error) {
+	if exportType != "" && exportType != "gcode" {
+		return nil, fmt.Errorf("only G-code results are supported")
+	}
 	entries, err := os.ReadDir(outputDir)
 	if err != nil {
 		return nil, err
 	}
 
-	ext := ".gcode"
-	if exportType == "3mf" {
-		ext = ".3mf"
-	}
-
 	files := make([]string, 0)
 	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ext) {
+		if entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ".gcode") {
 			continue
 		}
 		files = append(files, filepath.Join(outputDir, entry.Name()))
@@ -584,5 +634,5 @@ func (s *Service) resultCacheKey(models []ModelInput, settings Settings, debug S
 		Printer    map[string]any
 		Preset     map[string]any
 		Filaments  []map[string]any
-	}{1, base, hex.EncodeToString(digest.Sum(nil)), debug.Printer, debug.Preset, debug.Filaments})
+	}{2, base, hex.EncodeToString(digest.Sum(nil)), debug.Printer, debug.Preset, debug.Filaments})
 }

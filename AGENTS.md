@@ -30,7 +30,7 @@ O stage `vendorprofiles` obtém JSON da mesma tag e preserva o prefixo `resource
 
 `loadSelectedProfile` sempre resolve perfis nomeados, mesmo com `resolveProfiles=false`. A resolução aplica herança, overrides e remove `inherits`. Perfis diretos multipart não são achatados automaticamente. BOM UTF-8 é tolerado pelo leitor em disco, não por todas as entradas HTTP. Fallback por tokens equivalentes é último recurso, rejeita ambiguidades e retorna warning nos endpoints de resolução quando usado; revise o resultado. Regressões da atualização ficam em `internal/slicer/overrides_250_test.go`.
 
-O AppImage original com três perfis achatados pela API fatiou cubo e STL de 5.952 triângulos, inclusive este último com arrange=false. Há diferenças de camadas/estimativas frente à referência 2.4.0; não afirmar equivalência ou impressão física validada. A correção foi enviada para build. Isso **não** comprova fluxo completo HTTP, imagem final, publicação concluída ou deploy. Evidências genéricas estão em `docs/api/overview.md`.
+O AppImage oficial 2.5.0 foi exercitado por HTTP local com STLs sintéticos: sync/async, quantidade/mesa estritas, overflow, rotações, suporte/brim, preview e truncamento. O contrato atual aceita exatamente um STL e entrega somente `plate_1.gcode`; não reintroduzir múltiplos modelos, 3MF/ZIP ou redução silenciosa de quantidade sem mudança explícita de escopo. Não afirmar equivalência com 2.4.0 ou impressão física sem validação específica. Imagem final, publicação e deploy exigem evidência própria; o teste local não os comprova. Evidências genéricas estão em `docs/api/overview.md`.
 
 ## Versão e plataforma
 

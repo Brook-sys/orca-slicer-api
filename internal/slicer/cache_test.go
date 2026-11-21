@@ -3,11 +3,12 @@ package slicer
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
 
-func TestBuildArgsForInputsPassesAllModels(t *testing.T) {
+func TestBuildArgsUsesStrictSingleSTLContract(t *testing.T) {
 	service := Service{DataPath: t.TempDir()}
 	workdir := t.TempDir()
 	inputDir := filepath.Join(workdir, "input")
@@ -19,15 +20,31 @@ func TestBuildArgsForInputsPassesAllModels(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	modelA := filepath.Join(inputDir, "a.stl")
-	modelB := filepath.Join(inputDir, "b.stl")
-	args, err := service.buildArgsForInputs([]string{modelA, modelB}, inputDir, outputDir, Settings{Arrange: true}, &SliceDebug{})
+	model := filepath.Join(inputDir, "a.stl")
+	zero := 0.0
+	rotation := 30.0
+	args, err := service.buildArgsForInputs([]string{model}, inputDir, outputDir, Settings{Quantity: 3, Arrange: true, RotateX: &zero, Rotate: &rotation}, &SliceDebug{})
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	if args[len(args)-2] != modelA || args[len(args)-1] != modelB {
-		t.Fatalf("expected both models at end of args, got %#v", args)
+	joined := strings.Join(args, " ")
+	for _, expected := range []string{"--slice 1", "--clone-objects 3", "--export-statistics", "--rotate-x 0 --rotate 30 --ensure-on-bed --arrange 1 --orient 0"} {
+		if !strings.Contains(joined, expected) {
+			t.Fatalf("expected %q in args, got %#v", expected, args)
+		}
+	}
+	if args[len(args)-1] != model {
+		t.Fatalf("expected one trailing STL path, got %#v", args)
+	}
+	if strings.Contains(joined, "--export-3mf") || strings.Contains(joined, "--repetitions") {
+		t.Fatalf("unexpected legacy arguments: %#v", args)
+	}
+	plainArgs, err := service.buildArgsForInputs([]string{model}, inputDir, outputDir, Settings{}, &SliceDebug{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(strings.Join(plainArgs, " "), "--ensure-on-bed") {
+		t.Fatalf("unrotated input must preserve its original Z placement: %#v", plainArgs)
 	}
 }
 
@@ -81,7 +98,7 @@ func TestResultCacheUsesModelsAndSettings(t *testing.T) {
 		t.Fatalf("cache must return an independent copy: %#v", entry)
 	}
 
-	otherKey := cache.makeModelsKey(models, Settings{ExportType: "3mf"})
+	otherKey := cache.makeModelsKey(models, Settings{ExportType: "gcode", Quantity: 2, Arrange: true})
 	if _, ok := cache.Get(otherKey); ok {
 		t.Fatalf("expected different settings to miss cache")
 	}

@@ -1,9 +1,10 @@
 # Arquitetura
 
 ```text
-HTTP → handler → validação multipart/JSON → service/lock → arquivos temporários
+HTTP → handler → um STL/settings estritos → service/lock → arquivos temporários
      → perfis nomeados resolvidos ou JSON diretos → OrcaSlicer CLI
-     → coleta de arquivos → thumbnail opcional → metadados → download/preview/job
+     → validação de plate_1/manifesto/estatísticas → thumbnail opcional
+     → metadados/toolpaths limitados → G-code/preview/job
 ```
 
 | Pacote | Responsabilidade |
@@ -39,4 +40,4 @@ Um mutex por service permite só um processo de slicing por instância. Não há
 
 O Dockerfile mantém AppImage original em `/app/squashfs-root` e JSON da mesma tag em `/app/profiles-json/resources/profiles`. A API usa os JSON separados para achatar herança; não interpreta caches `.opc`. A resolução por nome é recursiva; a listagem HTTP de built-ins não é e permanece incompatível com a árvore vendor normal.
 
-Preview usa o mesmo pipeline, forçando suporte e thumbnail. Miniatura é renderização STL pela API, não renderização do CLI. Cache é uma otimização com chave incompleta, não fronteira de correção. Consulte [limitações operacionais](operations.md).
+Preview usa o mesmo pipeline e preserva a decisão de suporte. A miniatura é uma renderização separada do STL pela API; os toolpaths são extraídos do G-code com limites duros e truncamento explícito da lista retida. Cache é uma otimização com chave de escopo finito: não captura todo o ambiente do CLI, mas cada hit revalida G-code e evidências. Consulte [limitações operacionais](operations.md).

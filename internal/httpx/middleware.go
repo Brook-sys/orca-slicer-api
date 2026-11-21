@@ -45,7 +45,7 @@ func cors(corsOrigins string, next http.Handler) http.Handler {
 		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		w.Header().Set("Access-Control-Expose-Headers", "Content-Disposition, ETag, Last-Modified, Content-Length, X-Filament-Used-g, X-Filament-Used-mm, X-Print-Time-Seconds")
+		w.Header().Set("Access-Control-Expose-Headers", "Content-Disposition, ETag, Last-Modified, Content-Length, X-Filament-Used-g, X-Filament-Used-mm, X-Print-Time-Seconds, X-Slice-Quantity, X-Slice-Plate")
 
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
