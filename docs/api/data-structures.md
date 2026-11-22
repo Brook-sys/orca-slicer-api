@@ -32,4 +32,6 @@ Settings de slicing são parseadas do multipart; perfis diretos são arquivos, n
 
 `Result{Files,Workdir,Metadata,Quantity,Statistics}` é interno: `/slice` retorna somente `plate_1.gcode`, não esse objeto nem ZIP. `PreviewResult` também é interno; o handler expõe `usesSupport`, `printTime`, `filamentUsedG`, `filamentUsedMm`, `thumbnail`, `quantity` e `toolpaths`. O contrato completo de toolpaths, limites e truncamento está em [preview](preview.md) e no OpenAPI.
 
+Toolpath legacy permanece `version=1`, sem `mode`, `geometryComplete`, `widthMm` ou `heightMm`. Full usa `version=2`, `mode="full"`, `geometryComplete=true` e inclui `widthMm`/`heightMm` em cada segmento, com número positivo em mm ou `null` quando o metadado é desconhecido. Esses ponteiros são detalhes internos de representação; o contrato HTTP é o JSON documentado, não as structs Go.
+
 Estado e debug globais têm contratos distintos dos jobs: veja [status/debug](status-debug.md).

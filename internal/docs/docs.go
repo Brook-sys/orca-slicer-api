@@ -166,8 +166,8 @@ const OpenAPI = `{
     "/slice/preview": {
       "post": {
         "tags": ["Slicing"],
-        "summary": "Fatia um STL e retorna toolpaths limitados, metadados e thumbnail",
-        "description": "Usa o mesmo contrato estrito de quantidade e mesa do slicing síncrono. A prévia é extraída do G-code real, incluindo movimentos de suporte e brim; o thumbnail é uma renderização separada do STL. Não retorna o G-code. Fontes acima dos limites, comandos não suportados ou trabalho de arcos excessivo falham sem prévia parcial.",
+        "summary": "Fatia um STL e retorna toolpaths limitados ou completos sob orçamento, metadados e thumbnail",
+        "description": "Usa o mesmo contrato estrito de quantidade e mesa do slicing síncrono. A prévia é extraída do G-code real, incluindo movimentos de suporte e brim; o thumbnail é uma renderização separada do STL. Não retorna o G-code. O default legacy retém um prefixo de até 512 camadas/20000 segmentos XY. toolpathMode=full retém toda extrusão positiva XYZ até 4096 camadas/250000 segmentos, acrescenta widthMm/heightMm e geometryComplete=true, e exceder esses orçamentos retorna 422 sem prévia parcial. Fontes acima dos demais limites, comandos não suportados ou trabalho de arcos excessivo falham sem prévia parcial.",
         "requestBody": {
           "required": true,
           "content": {
@@ -317,7 +317,7 @@ const OpenAPI = `{
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "message": "Slicer is busy" } } }
       },
       "UnprocessableSlice": {
-        "description": "Depois de o CLI concluir com sucesso, a validação detectou contagem ou mesas divergentes. Nenhum G-code parcial é retornado; reduza quantity e tente novamente. Falha do próprio CLI é 500; no async, ambos aparecem como job failed após o 202.",
+        "description": "Depois de o CLI concluir com sucesso, a validação detectou contagem ou mesas divergentes, ou o preview full excedeu 4096 camadas/250000 segmentos retidos. Nenhum G-code ou preview geométrico parcial é retornado. Reduza quantity para overflow de mesa ou use legacy/simplifique o modelo quando aplicável. Falha do próprio CLI é 500; no async, validação de saída aparece como job failed após o 202.",
         "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ErrorResponse" }, "example": { "message": "requested quantity 12, but OrcaSlicer produced 4 object(s) on plate 1; reduce quantity and retry" } } }
       },
       "InternalError": {
@@ -510,7 +510,8 @@ const OpenAPI = `{
           "enableSupport": { "type": "boolean", "description": "Ausente preserva o preset; presente escreve enable_support como string 1/0 no preset temporário (necessário no OrcaSlicer 2.5.0)" },
           "brimType": { "type": "boolean", "description": "Ausente preserva o preset; true=auto_brim e false=no_brim" },
           "printSequenceByObject": { "type": "boolean", "default": false, "description": "true=by object; ausente/false=by layer no preset temporário" },
-          "overrides": { "type": "string", "description": "String JSON com objetos printer, preset e/ou filament" }
+          "overrides": { "type": "string", "description": "String JSON com objetos printer, preset e/ou filament" },
+          "toolpathMode": { "type": "string", "enum": ["legacy", "full"], "default": "legacy", "description": "Somente /slice/preview: ausente/legacy preserva v1; full retorna v2 completo dentro de 4096 camadas/250000 segmentos ou erro 422" }
         }
       },
       "PreviewResponse": {
@@ -528,10 +529,12 @@ const OpenAPI = `{
       },
       "ToolpathPreview": {
         "type": "object",
-        "description": "Movimentos XY com extrusão positiva do G-code real. A leitura é completa somente quando sourceComplete=true; layers/segments são um prefixo retido e limitado, enquanto totais, contadores e bounds consideram toda a fonte analisada.",
+        "description": "Extrusão positiva do G-code real: XY em v1/legacy e XYZ em v2/full. A leitura é completa somente quando sourceComplete=true. Em legacy, layers/segments são um prefixo limitado e totais/contadores/bounds cobrem toda a fonte. Em full, toda a geometria suportada é retida ou a resposta falha; geometryComplete=true é emitido somente após essa verificação final.",
         "required": ["version", "positionUnit", "extrusionUnit", "feedrateUnit", "coordinateSystem", "sourceComplete", "truncated", "sourceBytes", "sourceLines", "totalLayers", "totalSegments", "returnedLayers", "returnedSegments", "omittedSegments", "supportSegments", "brimSegments", "layerSemantics", "warnings", "limits", "layers"],
         "properties": {
-          "version": { "type": "integer", "enum": [1] },
+          "version": { "type": "integer", "enum": [1, 2], "description": "1 em legacy; 2 em full" },
+          "mode": { "type": "string", "enum": ["full"], "description": "Presente somente em full; ausente preserva o JSON v1" },
+          "geometryComplete": { "type": "boolean", "enum": [true], "description": "Presente e true somente em full após todos os segmentos/camadas suportados serem retidos; não inclui travels nem efeitos de macros" },
           "positionUnit": { "type": "string", "enum": ["mm"] },
           "extrusionUnit": { "type": "string", "enum": ["mm"] },
           "feedrateUnit": { "type": "string", "enum": ["mm/s"] },
@@ -542,8 +545,8 @@ const OpenAPI = `{
           "sourceLines": { "type": "integer", "minimum": 0 },
           "totalLayers": { "type": "integer", "minimum": 0 },
           "totalSegments": { "type": "integer", "minimum": 0, "description": "Total na fonte analisada após tesselação dos arcos" },
-          "returnedLayers": { "type": "integer", "minimum": 0, "maximum": 512 },
-          "returnedSegments": { "type": "integer", "minimum": 0, "maximum": 20000 },
+          "returnedLayers": { "type": "integer", "minimum": 0, "maximum": 4096 },
+          "returnedSegments": { "type": "integer", "minimum": 0, "maximum": 250000 },
           "omittedSegments": { "type": "integer", "minimum": 0 },
           "supportSegments": { "type": "integer", "minimum": 0, "description": "Total de extrusões Support, Support interface ou Support transition, incluindo segmentos omitidos" },
           "brimSegments": { "type": "integer", "minimum": 0, "description": "Total de extrusões Brim, incluindo segmentos omitidos" },
@@ -551,7 +554,7 @@ const OpenAPI = `{
           "warnings": { "type": "array", "items": { "type": "string" }, "description": "Inclui limitações como macros de impressora não expandidas e homing assumido em zero" },
           "limits": { "$ref": "#/components/schemas/ToolpathLimits" },
           "bounds": { "$ref": "#/components/schemas/ToolpathBounds" },
-          "layers": { "type": "array", "maxItems": 512, "items": { "$ref": "#/components/schemas/ToolpathLayer" } }
+          "layers": { "type": "array", "maxItems": 4096, "items": { "$ref": "#/components/schemas/ToolpathLayer" } }
         }
       },
       "ToolpathLimits": {
@@ -561,8 +564,8 @@ const OpenAPI = `{
           "sourceBytes": { "type": "integer", "enum": [33554432] },
           "lineBytes": { "type": "integer", "enum": [1048576] },
           "lines": { "type": "integer", "enum": [4000000] },
-          "layers": { "type": "integer", "enum": [512], "description": "Máximo retido; camadas adicionais são contadas, mas não retornadas" },
-          "segments": { "type": "integer", "enum": [20000], "description": "Máximo retido globalmente" },
+          "layers": { "type": "integer", "enum": [512, 4096], "description": "512 em legacy (prefixo) ou 4096 em full (erro ao exceder)" },
+          "segments": { "type": "integer", "enum": [20000, 250000], "description": "20000 em legacy (prefixo) ou 250000 em full (erro ao exceder)" },
           "arcSegmentsPerMove": { "type": "integer", "enum": [4096] },
           "arcSegmentsTotal": { "type": "integer", "enum": [1000000], "description": "Orçamento global de tesselação; excedê-lo falha sem prévia parcial" },
           "arcChordToleranceMm": { "type": "number", "enum": [0.05] }
@@ -571,7 +574,7 @@ const OpenAPI = `{
       "ToolpathBounds": {
         "type": "object",
         "required": ["min", "max"],
-        "description": "Bounds dos pontos de extrusão XY analisados na fonte completa, inclusive geometria omitida da lista retida. Arcos são representados por sua tesselação.",
+        "description": "Bounds dos pontos de extrusão XY em legacy ou XYZ em full, inclusive geometria omitida do prefixo legacy. Arcos são representados por sua tesselação.",
         "properties": {
           "min": { "$ref": "#/components/schemas/ToolpathVector" },
           "max": { "$ref": "#/components/schemas/ToolpathVector" }
@@ -596,7 +599,9 @@ const OpenAPI = `{
           "feedrateMmSec": { "type": "number", "description": "Último feedrate comandado, convertido para mm/s" },
           "feature": { "type": "string", "description": "Marcador TYPE/FEATURE vigente; Wipe durante WIPE_START/WIPE_END" },
           "object": { "type": "string", "description": "Nome lido dos comentários printing object do OrcaSlicer" },
-          "tool": { "type": "integer", "minimum": 0, "maximum": 254 }
+          "tool": { "type": "integer", "minimum": 0, "maximum": 254 },
+          "widthMm": { "type": "number", "nullable": true, "minimum": 0, "exclusiveMinimum": true, "description": "Somente full: WIDTH vigente do Orca em mm; null quando ausente" },
+          "heightMm": { "type": "number", "nullable": true, "minimum": 0, "exclusiveMinimum": true, "description": "Somente full: HEIGHT vigente do Orca em mm; null quando ausente" }
         }
       },
       "ToolpathVector": {

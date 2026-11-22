@@ -5,8 +5,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 
@@ -279,6 +279,14 @@ func (s *Service) sliceInternal(ctx context.Context, jobID string, models []Mode
 }
 
 func (s *Service) Preview(ctx context.Context, filename string, data []byte, settings Settings) (PreviewResult, error) {
+	return s.PreviewWithOptions(ctx, filename, data, settings, PreviewOptions{})
+}
+
+func (s *Service) PreviewWithOptions(ctx context.Context, filename string, data []byte, settings Settings, options PreviewOptions) (PreviewResult, error) {
+	mode, err := normalizeToolpathMode(options.ToolpathMode)
+	if err != nil {
+		return PreviewResult{}, err
+	}
 	// Preview changes only the representation, never the support decision. The
 	// thumbnail is returned separately so the parser reads the original G-code
 	// without an in-memory thumbnail-injection copy.
@@ -296,8 +304,12 @@ func (s *Service) Preview(ctx context.Context, filename string, data []byte, set
 	}
 
 	gcodePath := result.Files[0]
-	toolpaths, err := extractToolpathPreview(ctx, gcodePath)
+	toolpaths, err := extractToolpathPreviewMode(ctx, gcodePath, mode)
 	if err != nil {
+		var httpError *httpx.Error
+		if errors.As(err, &httpError) {
+			return PreviewResult{}, err
+		}
 		return PreviewResult{}, httpx.NewError(http.StatusInternalServerError, "Failed to build toolpath preview: "+err.Error())
 	}
 	thumb, err := neptune4ThumbnailBase64(data)

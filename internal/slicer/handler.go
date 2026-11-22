@@ -222,8 +222,13 @@ func (h Handler) Preview(w http.ResponseWriter, r *http.Request) {
 		httpx.WriteError(w, err)
 		return
 	}
+	mode, err := normalizeToolpathMode(r.FormValue("toolpathMode"))
+	if err != nil {
+		httpx.WriteError(w, err)
+		return
+	}
 
-	result, err := h.Service.Preview(r.Context(), models[0].Filename, models[0].Data, settings)
+	result, err := h.Service.PreviewWithOptions(r.Context(), models[0].Filename, models[0].Data, settings, PreviewOptions{ToolpathMode: mode})
 	if err != nil {
 		httpx.WriteError(w, err)
 		return

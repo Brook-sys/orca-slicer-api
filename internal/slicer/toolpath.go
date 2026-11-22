@@ -3,27 +3,44 @@ package slicer
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
+	"net/http"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/Brook-sys/orca-slicer-api/internal/httpx"
 )
 
 const (
-	maxToolpathSourceBytes = 32 << 20
-	maxToolpathLineBytes   = 1 << 20
-	maxToolpathLines       = 4_000_000
-	maxToolpathLayers      = 512
-	maxToolpathSegments    = 20_000
-	maxToolpathArcSegments = 4_096
-	maxToolpathArcWork     = 1_000_000
-	toolpathArcToleranceMM = 0.05
+	maxToolpathSourceBytes  = 32 << 20
+	maxToolpathLineBytes    = 1 << 20
+	maxToolpathLines        = 4_000_000
+	maxToolpathLayers       = 512
+	maxToolpathSegments     = 20_000
+	maxFullToolpathLayers   = 4_096
+	maxFullToolpathSegments = 250_000
+	maxToolpathArcSegments  = 4_096
+	maxToolpathArcWork      = 1_000_000
+	toolpathArcToleranceMM  = 0.05
 )
+
+const (
+	toolpathModeLegacy = "legacy"
+	toolpathModeFull   = "full"
+)
+
+type PreviewOptions struct {
+	ToolpathMode string
+}
 
 type ToolpathPreview struct {
 	Version          int             `json:"version"`
+	Mode             string          `json:"mode,omitempty"`
+	GeometryComplete bool            `json:"geometryComplete,omitempty"`
 	PositionUnit     string          `json:"positionUnit"`
 	ExtrusionUnit    string          `json:"extrusionUnit"`
 	FeedrateUnit     string          `json:"feedrateUnit"`
@@ -76,6 +93,24 @@ type ToolpathSegment struct {
 	Feature   string     `json:"feature,omitempty"`
 	Object    string     `json:"object,omitempty"`
 	Tool      int        `json:"tool"`
+	WidthMM   *float64   `json:"-"`
+	HeightMM  *float64   `json:"-"`
+	fullMode  bool
+}
+
+// MarshalJSON leaves the legacy segment representation byte-for-byte compatible.
+// Full mode always includes both metadata keys, using null when Orca did not
+// declare a value instead of inventing a cross-section for the renderer.
+func (s ToolpathSegment) MarshalJSON() ([]byte, error) {
+	type segmentAlias ToolpathSegment
+	if !s.fullMode {
+		return json.Marshal(segmentAlias(s))
+	}
+	return json.Marshal(struct {
+		segmentAlias
+		WidthMM  *float64 `json:"widthMm"`
+		HeightMM *float64 `json:"heightMm"`
+	}{segmentAlias: segmentAlias(s), WidthMM: s.WidthMM, HeightMM: s.HeightMM})
 }
 
 type toolpathParser struct {
@@ -92,6 +127,11 @@ type toolpathParser struct {
 	currentTool      int
 	currentFeature   string
 	currentObject    string
+	currentWidth     *float64
+	currentHeight    *float64
+	fullMode         bool
+	segmentLimit     int
+	layerLimit       int
 	wiping           bool
 	sawLayerMarker   bool
 	pendingLayerZ    bool
@@ -117,7 +157,26 @@ var nonMotionMCommands = map[string]bool{
 	"M572": true, "M624": true, "M625": true, "M900": true,
 }
 
+func normalizeToolpathMode(mode string) (string, error) {
+	switch mode {
+	case "", toolpathModeLegacy:
+		return toolpathModeLegacy, nil
+	case toolpathModeFull:
+		return toolpathModeFull, nil
+	default:
+		return "", httpx.NewError(http.StatusBadRequest, "toolpathMode must be legacy or full")
+	}
+}
+
 func extractToolpathPreview(ctx context.Context, path string) (ToolpathPreview, error) {
+	return extractToolpathPreviewMode(ctx, path, toolpathModeLegacy)
+}
+
+func extractToolpathPreviewMode(ctx context.Context, path, mode string) (ToolpathPreview, error) {
+	mode, err := normalizeToolpathMode(mode)
+	if err != nil {
+		return ToolpathPreview{}, err
+	}
 	file, err := os.Open(path)
 	if err != nil {
 		return ToolpathPreview{}, err
@@ -131,15 +190,26 @@ func extractToolpathPreview(ctx context.Context, path string) (ToolpathPreview, 
 		return ToolpathPreview{}, fmt.Errorf("G-code exceeds the %d-byte preview limit", int64(maxToolpathSourceBytes))
 	}
 
+	layerLimit := maxToolpathLayers
+	segmentLimit := maxToolpathSegments
+	version := 1
+	if mode == toolpathModeFull {
+		layerLimit = maxFullToolpathLayers
+		segmentLimit = maxFullToolpathSegments
+		version = 2
+	}
 	parser := toolpathParser{
 		ctx:           ctx,
 		unitsScale:    1,
 		currentLayer:  -1,
 		retainedLayer: -1,
 		fallbackZ:     math.NaN(),
+		fullMode:      mode == toolpathModeFull,
+		layerLimit:    layerLimit,
+		segmentLimit:  segmentLimit,
 	}
 	parser.preview = ToolpathPreview{
-		Version:          1,
+		Version:          version,
 		PositionUnit:     "mm",
 		ExtrusionUnit:    "mm",
 		FeedrateUnit:     "mm/s",
@@ -152,12 +222,15 @@ func extractToolpathPreview(ctx context.Context, path string) (ToolpathPreview, 
 			SourceBytes:         maxToolpathSourceBytes,
 			LineBytes:           maxToolpathLineBytes,
 			Lines:               maxToolpathLines,
-			Layers:              maxToolpathLayers,
-			Segments:            maxToolpathSegments,
+			Layers:              layerLimit,
+			Segments:            segmentLimit,
 			ArcSegmentsPerMove:  maxToolpathArcSegments,
 			ArcSegmentsTotal:    maxToolpathArcWork,
 			ArcChordToleranceMM: toolpathArcToleranceMM,
 		},
+	}
+	if parser.fullMode {
+		parser.preview.Mode = toolpathModeFull
 	}
 
 	scanner := bufio.NewScanner(file)
@@ -199,6 +272,12 @@ func extractToolpathPreview(ctx context.Context, path string) (ToolpathPreview, 
 	}
 	parser.preview.OmittedSegments = parser.preview.TotalSegments - parser.preview.ReturnedSegments
 	parser.preview.Truncated = parser.preview.TotalLayers > len(parser.preview.Layers) || parser.preview.OmittedSegments > 0
+	if parser.fullMode {
+		if parser.preview.Truncated {
+			return ToolpathPreview{}, fmt.Errorf("internal full toolpath retention invariant failed")
+		}
+		parser.preview.GeometryComplete = true
+	}
 	return parser.preview, nil
 }
 
@@ -470,7 +549,9 @@ func (p *toolpathParser) parseComment(comment string) error {
 	case "LAYER_CHANGE", "CHANGE_LAYER":
 		p.sawLayerMarker = true
 		p.preview.LayerSemantics = "markers"
-		p.beginLayer(p.position[2])
+		if err := p.beginLayer(p.position[2]); err != nil {
+			return err
+		}
 		p.pendingLayerZ = true
 		return nil
 	case "WIPE_START":
@@ -486,6 +567,21 @@ func (p *toolpathParser) parseComment(comment string) error {
 			return nil
 		}
 	}
+	if p.fullMode {
+		for _, dimension := range []struct {
+			prefix string
+			target **float64
+		}{{"WIDTH:", &p.currentWidth}, {"HEIGHT:", &p.currentHeight}} {
+			if strings.HasPrefix(comment, dimension.prefix) {
+				value, err := parseToolpathDimension(strings.TrimSpace(strings.TrimPrefix(comment, dimension.prefix)))
+				if err != nil {
+					return fmt.Errorf("invalid %s metadata: %w", strings.TrimSuffix(dimension.prefix, ":"), err)
+				}
+				*dimension.target = &value
+				return nil
+			}
+		}
+	}
 	for _, prefix := range []string{"Z:", "Z_HEIGHT:"} {
 		if strings.HasPrefix(comment, prefix) {
 			z, err := strconv.ParseFloat(strings.TrimSpace(strings.TrimPrefix(comment, prefix)), 64)
@@ -493,14 +589,18 @@ func (p *toolpathParser) parseComment(comment string) error {
 				return fmt.Errorf("invalid layer Z marker")
 			}
 			if p.currentLayer < 0 {
-				p.beginLayer(z)
+				if err := p.beginLayer(z); err != nil {
+					return err
+				}
 			} else if p.pendingLayerZ {
 				if p.retainedLayer >= 0 {
 					p.preview.Layers[p.retainedLayer].Z = z
 				}
 				p.pendingLayerZ = false
 			} else if !p.sawLayerMarker {
-				p.beginLayer(z)
+				if err := p.beginLayer(z); err != nil {
+					return err
+				}
 			}
 			return nil
 		}
@@ -519,6 +619,14 @@ func (p *toolpathParser) parseComment(comment string) error {
 		return nil
 	}
 	return nil
+}
+
+func parseToolpathDimension(raw string) (float64, error) {
+	value, err := strconv.ParseFloat(raw, 64)
+	if err != nil || math.IsNaN(value) || math.IsInf(value, 0) || value <= 0 {
+		return 0, fmt.Errorf("expected a finite positive number in millimeters")
+	}
+	return value, nil
 }
 
 func (p *toolpathParser) setPosition(args map[byte]float64) error {
@@ -587,12 +695,18 @@ func (p *toolpathParser) linearMove(args map[byte]float64) error {
 	}
 	p.updateFeedrate(args)
 	deltaE := extruder - p.extruderPosition
-	if deltaE > 0 && (target[0] != p.position[0] || target[1] != p.position[1]) {
-		p.recordSegment(p.position, target, deltaE)
+	if deltaE > 0 && p.hasExtrusionGeometry(p.position, target) {
+		if err := p.recordSegment(p.position, target, deltaE); err != nil {
+			return err
+		}
 	}
 	p.position = target
 	p.extruderPosition = extruder
 	return nil
+}
+
+func (p *toolpathParser) hasExtrusionGeometry(from, to [3]float64) bool {
+	return from[0] != to[0] || from[1] != to[1] || (p.fullMode && from[2] != to[2])
 }
 
 func (p *toolpathParser) arcMove(args map[byte]float64, clockwise bool) error {
@@ -705,8 +819,10 @@ func (p *toolpathParser) arcMove(args map[byte]float64, clockwise bool) error {
 			next[0] = centerX + radius*math.Cos(angle)
 			next[1] = centerY + radius*math.Sin(angle)
 		}
-		if deltaE > 0 && (next[0] != previous[0] || next[1] != previous[1]) {
-			p.recordSegment(previous, next, deltaE/float64(pieces))
+		if deltaE > 0 && p.hasExtrusionGeometry(previous, next) {
+			if err := p.recordSegment(previous, next, deltaE/float64(pieces)); err != nil {
+				return err
+			}
 		}
 		previous = next
 	}
@@ -735,19 +851,39 @@ func arcSweep(start, end [3]float64, centerX, centerY float64, clockwise, fullCi
 	return sweep
 }
 
-func (p *toolpathParser) beginLayer(z float64) {
+func (p *toolpathParser) retainedLayerLimit() int {
+	if p.layerLimit > 0 {
+		return p.layerLimit
+	}
+	return maxToolpathLayers
+}
+
+func (p *toolpathParser) retainedSegmentLimit() int {
+	if p.segmentLimit > 0 {
+		return p.segmentLimit
+	}
+	return maxToolpathSegments
+}
+
+func (p *toolpathParser) beginLayer(z float64) error {
 	p.currentLayer++
 	p.preview.TotalLayers++
 	p.retainedLayer = -1
-	if len(p.preview.Layers) < maxToolpathLayers {
+	if p.fullMode && p.preview.TotalLayers > p.retainedLayerLimit() {
+		return httpx.NewError(http.StatusUnprocessableEntity, fmt.Sprintf("Full toolpath preview exceeds the %d-layer retention limit; no partial geometry returned", p.retainedLayerLimit()))
+	}
+	if len(p.preview.Layers) < p.retainedLayerLimit() {
 		p.preview.Layers = append(p.preview.Layers, ToolpathLayer{Index: p.currentLayer, Z: z, Segments: make([]ToolpathSegment, 0)})
 		p.retainedLayer = len(p.preview.Layers) - 1
 	}
+	return nil
 }
 
-func (p *toolpathParser) recordSegment(from, to [3]float64, extrusion float64) {
+func (p *toolpathParser) recordSegment(from, to [3]float64, extrusion float64) error {
 	if p.currentLayer < 0 || (!p.sawLayerMarker && (math.IsNaN(p.fallbackZ) || math.Abs(from[2]-p.fallbackZ) > 1e-9)) {
-		p.beginLayer(from[2])
+		if err := p.beginLayer(from[2]); err != nil {
+			return err
+		}
 		p.fallbackZ = from[2]
 	}
 	p.preview.TotalSegments++
@@ -757,21 +893,29 @@ func (p *toolpathParser) recordSegment(from, to [3]float64, extrusion float64) {
 	case "Brim":
 		p.preview.BrimSegments++
 	}
-	// Bounds describe all positive-extrusion XY geometry in the completely read
-	// source, including geometry omitted from the retained prefix.
+	// Bounds describe all retained-mode extrusion geometry in the completely
+	// read source, including the legacy prefix's omitted geometry.
 	p.includeInBounds(from)
 	p.includeInBounds(to)
-	if p.retainedLayer < 0 || p.retainedSegments >= maxToolpathSegments {
-		return
+	if p.fullMode && p.preview.TotalSegments > p.retainedSegmentLimit() {
+		return httpx.NewError(http.StatusUnprocessableEntity, fmt.Sprintf("Full toolpath preview exceeds the %d-segment retention limit; no partial geometry returned", p.retainedSegmentLimit()))
+	}
+	if p.retainedLayer < 0 || p.retainedSegments >= p.retainedSegmentLimit() {
+		return nil
 	}
 	feature := p.currentFeature
 	if p.wiping {
 		feature = "Wipe"
 	}
-	segment := ToolpathSegment{From: from, To: to, Extrusion: extrusion, Feedrate: p.feedrate, Feature: feature, Object: p.currentObject, Tool: p.currentTool}
+	segment := ToolpathSegment{From: from, To: to, Extrusion: extrusion, Feedrate: p.feedrate, Feature: feature, Object: p.currentObject, Tool: p.currentTool, fullMode: p.fullMode}
+	if p.fullMode {
+		segment.WidthMM = p.currentWidth
+		segment.HeightMM = p.currentHeight
+	}
 	layer := &p.preview.Layers[p.retainedLayer]
 	layer.Segments = append(layer.Segments, segment)
 	p.retainedSegments++
+	return nil
 }
 
 func (p *toolpathParser) includeInBounds(point [3]float64) {

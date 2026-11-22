@@ -10,11 +10,11 @@ O campo é `message`, não `error`. Respostas de roteamento do Go (404/405 etc.)
 
 | HTTP | Situação |
 |---|---|
-| 400 | Multipart/JSON inválido, STL ausente ou múltiplo, STEP/3MF, limite por arquivo, categoria/nome inválidos, `quantity` fora de 1–512, mesa/export inválidos, espaçamento positivo ou `orient` combinado com rotação |
+| 400 | Multipart/JSON inválido, STL ausente ou múltiplo, STEP/3MF, limite por arquivo, categoria/nome inválidos, `quantity` fora de 1–512, mesa/export/`toolpathMode` inválidos, espaçamento positivo ou `orient` combinado com rotação |
 | 404 | Perfil/job/alias não encontrado; listagem built-in sem diretório suportado |
 | 408 | `Slicing cancelled or timed out` durante execução CLI |
 | 409 | `Slicer is busy`, ou import sem overwrite para perfil existente |
-| 422 | Após sucesso do CLI, cópias/mesas não couberam no resultado estrito ou a contagem de objetos divergiu; reduza `quantity` e tente novamente |
+| 422 | Após sucesso do CLI, cópias/mesas não couberam no resultado estrito, a contagem de objetos divergiu ou o preview full excedeu 4.096 camadas/250.000 segmentos; nenhum resultado geométrico parcial é entregue |
 | 500 | CLI, filesystem, download externo, thumbnail, parser ou evidência de saída ausente/inválida |
 | 503 | Health essencial falhou |
 
@@ -44,7 +44,15 @@ Warnings de fallback de nomes exigem revisão. Fallback por tokens ambíguo é r
 
 No Orca 2.5.0, cada `--rotate*` centraliza o volume na origem. A API acrescenta `--ensure-on-bed` quando há rotação explícita para evitar omitir a metade abaixo de Z=0. `orient=true` com rotação explícita é rejeitado, pois a orientação automática substitui essas rotações.
 
-No preview, fonte acima de 32 MiB, linha acima de 1 MiB, mais de 4.000.000 de linhas, comando não suportado ou excesso de trabalho de arcos retorna 500 sem prévia parcial. Atingir somente os limites de retenção de 512 camadas/20.000 segmentos não é erro: a resposta traz `truncated=true` e `omittedSegments`.
+No preview, fonte acima de 32 MiB, linha acima de 1 MiB, mais de 4.000.000 de linhas, comando não suportado ou excesso de trabalho de arcos retorna 500 sem prévia parcial. Em legacy, atingir somente os limites de retenção de 512 camadas/20.000 segmentos não é erro: a resposta traz `truncated=true` e `omittedSegments`.
+
+`toolpathMode` diferente de `legacy`/`full` retorna 400 antes do fatiamento. Em full, exceder 4.096 camadas ou 250.000 segmentos retorna 422 com uma das mensagens abaixo e sem JSON de preview parcial:
+
+```json
+{"message":"Full toolpath preview exceeds the 250000-segment retention limit; no partial geometry returned"}
+```
+
+A falha de camadas usa `Full toolpath preview exceeds the 4096-layer retention limit; no partial geometry returned`. O consumidor deve tratar o status e `message`, não depender do texto completo.
 
 ## Sequência de diagnóstico
 

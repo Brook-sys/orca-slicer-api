@@ -25,6 +25,7 @@ Multipart para `/slice`, `/slice/async` e `/slice/preview`. Os três endpoints a
 | `enableSupport` | Ausente preserva preset; presente escreve `enable_support` como **string `"1"`/`"0"`**. Boolean JSON é ignorado pelo Orca 2.5.0 nesse caminho |
 | `brimType` | Ausente preserva preset; true → `auto_brim`, false → `no_brim` |
 | `printSequenceByObject` | false; sempre define preset como `by layer`; true define `by object` |
+| `toolpathMode` | Somente `/slice/preview`: ausente/`legacy` preserva v1; `full` seleciona v2 com geometria XYZ e metadados, até 4.096 camadas/250.000 segmentos. Outro valor retorna 400 antes do fatiamento; excesso no full retorna 422 sem preview parcial. Não participa das settings nem da chave de cache do G-code |
 
 Boolean true no multipart: exatamente `true`, `1`, `on`. Qualquer outro texto é false. Para flags com default global, formulário e ambiente são combinados por OR: `false` não desliga ambiente true.
 

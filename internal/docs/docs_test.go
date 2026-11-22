@@ -61,13 +61,25 @@ func TestOpenAPIStrictSlicingContract(t *testing.T) {
 		"sourceBytes":         32 << 20,
 		"lineBytes":           1 << 20,
 		"lines":               4_000_000,
-		"layers":              512,
-		"segments":            20_000,
 		"arcSegmentsPerMove":  4_096,
 		"arcSegmentsTotal":    1_000_000,
 		"arcChordToleranceMm": 0.05,
 	} {
 		assertSingleEnumValue(t, openAPIObject(t, limitProperties, field), expected)
+	}
+	assertEnumValues(t, openAPIObject(t, limitProperties, "layers"), float64(512), float64(4096))
+	assertEnumValues(t, openAPIObject(t, limitProperties, "segments"), float64(20_000), float64(250_000))
+
+	assertEnumValues(t, openAPIObject(t, requestProperties, "toolpathMode"), "legacy", "full")
+	toolpathProperties := openAPIObject(t, document, "components", "schemas", "ToolpathPreview", "properties")
+	assertEnumValues(t, openAPIObject(t, toolpathProperties, "version"), float64(1), float64(2))
+	assertEnumValues(t, openAPIObject(t, toolpathProperties, "mode"), "full")
+	assertEnumValues(t, openAPIObject(t, toolpathProperties, "geometryComplete"), true)
+	segmentProperties := openAPIObject(t, document, "components", "schemas", "ToolpathSegment", "properties")
+	for _, field := range []string{"widthMm", "heightMm"} {
+		if nullable, ok := openAPIObject(t, segmentProperties, field)["nullable"].(bool); !ok || !nullable {
+			t.Errorf("%s must be nullable for unknown Orca metadata", field)
+		}
 	}
 
 	headers := openAPIObject(t, document, "components", "responses", "GCodeSliceResult", "headers")
@@ -166,8 +178,20 @@ func openAPIString(t *testing.T, value any, path ...string) string {
 
 func assertSingleEnumValue(t *testing.T, schema map[string]any, expected any) {
 	t.Helper()
+	assertEnumValues(t, schema, expected)
+}
+
+func assertEnumValues(t *testing.T, schema map[string]any, expected ...any) {
+	t.Helper()
 	values, ok := schema["enum"].([]any)
-	if !ok || len(values) != 1 || values[0] != expected {
-		t.Errorf("enum = %#v, want only %#v", schema["enum"], expected)
+	if !ok || len(values) != len(expected) {
+		t.Errorf("enum = %#v, want %#v", schema["enum"], expected)
+		return
+	}
+	for index := range expected {
+		if values[index] != expected[index] {
+			t.Errorf("enum = %#v, want %#v", values, expected)
+			return
+		}
 	}
 }

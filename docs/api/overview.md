@@ -8,7 +8,7 @@ A API Go recebe um STL e perfis, prepara arquivos temporários e executa o OrcaS
 - Aliases e resolução recursiva de perfis nomeados com overrides temporários.
 - Slicing sync/async de **exatamente um STL**, quantidade de 1 a 512 e somente G-code da mesa 1.
 - Validação de `plate_1.gcode`, manifesto e estatísticas, sem redução de quantidade, mesas extras, ZIP ou 3MF.
-- Preview por fatiamento real, estimativas, miniatura e toolpaths limitados extraídos do G-code.
+- Preview por fatiamento real, estimativas e miniatura; toolpaths v1 são um prefixo limitado e o modo opcional v2/full retém geometria completa dentro de orçamento explícito.
 - Cache com snapshots de evidência e revalidação do contrato de saída em cada hit, sem hash do snapshot ou validação semântica do G-code.
 - Estado/debug persistidos, métricas JSON, OpenAPI e Swagger UI manuais.
 

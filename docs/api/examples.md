@@ -77,7 +77,7 @@ curl --fail-with-body http://localhost:3000/slice/async \
   -F quantity=3 -F arrange=true
 ```
 
-Inspecione `quantity`, `toolpaths.sourceComplete`, `truncated`, `omittedSegments`, `limits` e `warnings`. `layers` pode ser apenas um prefixo mesmo com a fonte completa analisada.
+Inspecione `quantity`, `toolpaths.sourceComplete`, `truncated`, `omittedSegments`, `limits` e `warnings`. No default legacy, `layers` pode ser apenas um prefixo mesmo com a fonte completa analisada. Para pedir v2, repita o primeiro comando com `-F toolpathMode=full`; exija `version=2`, `geometryComplete=true` e nenhuma omissão. Full pode gerar dezenas de MB de JSON e retorna 422 em vez de geometria parcial quando excede seu orçamento. Veja [preview](preview.md).
 
 Copie o `id` real da resposta async para `JOB_ID`:
 

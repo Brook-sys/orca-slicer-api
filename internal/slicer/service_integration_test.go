@@ -89,7 +89,9 @@ G90
 M83
 ;LAYER_CHANGE
 ;Z:0.3
+;HEIGHT:0.3
 ;TYPE:Support
+;WIDTH:0.4
 G1 X0 Y0 Z0.3 F600
 G1 X1 Y0 E0.1
 EOF
@@ -125,6 +127,15 @@ EOF
 	}
 	if len(result.Toolpaths.Layers) != 1 || len(result.Toolpaths.Layers[0].Segments) != 1 || result.Toolpaths.Layers[0].Segments[0].Feature != "Support" {
 		t.Fatalf("expected actual support toolpath, got %#v", result.Toolpaths.Layers)
+	}
+
+	full, err := service.PreviewWithOptions(context.Background(), "model.stl", testASCIISTL(), Settings{}, PreviewOptions{ToolpathMode: toolpathModeFull})
+	if err != nil {
+		t.Fatal(err)
+	}
+	segment := full.Toolpaths.Layers[0].Segments[0]
+	if !full.Toolpaths.GeometryComplete || full.Toolpaths.Mode != toolpathModeFull || full.Toolpaths.Version != 2 || segment.WidthMM == nil || *segment.WidthMM != 0.4 || segment.HeightMM == nil || *segment.HeightMM != 0.3 {
+		t.Fatalf("full preview options did not reach extraction: %#v", full.Toolpaths)
 	}
 }
 

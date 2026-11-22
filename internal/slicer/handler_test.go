@@ -72,6 +72,31 @@ func TestParseSettingsRejectsInvalidStrictFields(t *testing.T) {
 	}
 }
 
+func TestPreviewRejectsInvalidToolpathModeBeforeSlicing(t *testing.T) {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", "model.stl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := part.Write([]byte("solid test\nendsolid test\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.WriteField("toolpathMode", "packed"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/slice/preview", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	res := httptest.NewRecorder()
+	Handler{Service: &Service{}}.Preview(res, req)
+	if res.Code != http.StatusBadRequest || !strings.Contains(res.Body.String(), "toolpathMode must be legacy or full") {
+		t.Fatalf("expected 400 toolpathMode error, got %d: %s", res.Code, res.Body.String())
+	}
+}
+
 func TestValidModelFile(t *testing.T) {
 	for _, name := range []string{"model.stl", "MODEL.STL"} {
 		if !validModelFile(name) {

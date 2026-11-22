@@ -34,7 +34,7 @@ Em validações que mudem parâmetros, não aceite hit de cache como evidência 
 - Lock vale por processo, não entre réplicas. Não compartilhe `DATA_PATH` entre servidores esperando isolamento ou escrita coordenada.
 - stdout/stderr do CLI retido para debug é limitado a 1 MiB, com marcador de truncamento. Isso não limita o volume produzido pelo processo nem sua CPU/RAM.
 - Metadados são lidos incrementalmente e a injeção de thumbnail usa cópia por arquivo temporário. A renderização STL, especialmente ASCII, ainda pode exigir memória proporcional à entrada.
-- O parser de preview tem limites próprios e falha fechado acima deles; retenção de 512 camadas/20.000 segmentos produz truncamento explícito, não sucesso parcial da leitura. Consulte [preview](preview.md).
+- O parser de preview tem limites próprios e falha fechado acima deles. Legacy retém um prefixo de 512 camadas/20.000 segmentos com truncamento explícito; full retém até 4.096 camadas/250.000 segmentos ou retorna 422 sem geometria parcial. O JSON full de objetos pode ocupar dezenas de MB e seu parser/encoder consome memória fora do lock de slicing: não trate o teto como prova de segurança sob previews concorrentes. Consulte [preview](preview.md).
 - `/metrics` retorna JSON: `uptime_seconds`, `goroutines`, `memory_alloc_mb` do **Go**, `jobs` e `cache_enabled` quando disponível. Não é formato Prometheus, não mede a memória total do CLI nem confirma integridade do cache.
 
 ## Validação local 2.5.0 e gate de release

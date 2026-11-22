@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-func writeToolpathFixture(t *testing.T, content string) string {
+func writeToolpathFixture(t testing.TB, content string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "plate_1.gcode")
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {

@@ -1,6 +1,6 @@
 # Orca Slicer API
 
-API REST em **Go 1.23, somente biblioteca padrão**, que gerencia perfis JSON e executa o OrcaSlicer CLI. Oferece fatiamento síncrono e assíncrono de um STL por chamada, quantidade exata na mesa 1, prévia com toolpaths limitados, metadados e miniaturas geradas pela API. Não é uma fila distribuída nem um serviço multiusuário isolado.
+API REST em **Go 1.23, somente biblioteca padrão**, que gerencia perfis JSON e executa o OrcaSlicer CLI. Oferece fatiamento síncrono e assíncrono de um STL por chamada, quantidade exata na mesa 1, prévia com toolpaths legacy limitados ou full sob orçamento, metadados e miniaturas geradas pela API. Não é uma fila distribuída nem um serviço multiusuário isolado.
 
 > **Estado da validação 2.5.0:** o AppImage oficial foi exercitado por HTTP local com STLs sintéticos, cobrindo sync/async, quantidade e overflow, rotações, suporte/brim, preview e truncamento. A validação local não comprova imagem final, publicação ou deploy; cada etapa exige evidência própria. Equivalência com 2.4.0 e impressão física não foram validados. Veja [evidências e limites](docs/api/overview.md).
 

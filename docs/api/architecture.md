@@ -4,7 +4,7 @@
 HTTP → handler → um STL/settings estritos → service/lock → arquivos temporários
      → perfis nomeados resolvidos ou JSON diretos → OrcaSlicer CLI
      → validação de plate_1/manifesto/estatísticas → thumbnail opcional
-     → metadados/toolpaths limitados → G-code/preview/job
+     → metadados/toolpaths legacy limitados ou full sob orçamento → G-code/preview/job
 ```
 
 | Pacote | Responsabilidade |
